@@ -1,0 +1,37 @@
+{
+  "businesses": [
+    {
+      "name": "Jackson's Tools",
+      "lat": 44.9738,
+      "lng": -93.2475,
+      "phone": "+1-612-555-0201",
+      "source_urls": [
+        "https://jackson-tools.example",
+        "https://directory.example/jackson-tools"
+      ],
+      "fallback_text": "Tools and repair supplies, including precision screwdrivers, hand tools, and hardware accessories."
+    },
+    {
+      "name": "Minneapolis Camera Exchange",
+      "lat": 44.9424,
+      "lng": -93.2208,
+      "phone": "+1-612-555-0202",
+      "source_urls": [
+        "https://mplscamera.example",
+        "https://directory.example/mpls-camera"
+      ],
+      "fallback_text": "Camera accessories and gear, camera battery chargers, 35mm film, and photo development."
+    },
+    {
+      "name": "Andy's Moving Supply North",
+      "lat": 45.001,
+      "lng": -93.266,
+      "phone": "+1-612-555-0203",
+      "source_urls": [
+        "https://andysmovingnorth.example",
+        "https://directory.example/andys-moving-north"
+      ],
+      "fallback_text": "Moving and storage supplies, packing tape, boxes, bubble wrap, and shipping materials."
+    }
+  ]
+}

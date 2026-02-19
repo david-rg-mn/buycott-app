@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: buycott-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: buycott
+      POSTGRES_PASSWORD: buycott
+      POSTGRES_DB: buycott
+    ports:
+      - '${BUYCOTT_POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - buycott_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/001-init.sql:ro
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.python
+    container_name: buycott-backend
+    depends_on:
+      - postgres
+    environment:
+      BUYCOTT_DATABASE_URL: postgresql+psycopg://buycott:buycott@postgres:5432/buycott
+      BUYCOTT_EMBEDDING_MODEL: ${BUYCOTT_EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      BUYCOTT_EMBEDDING_DEVICE: ${BUYCOTT_EMBEDDING_DEVICE:-cpu}
+      BUYCOTT_EMBEDDING_BATCH_SIZE: ${BUYCOTT_EMBEDDING_BATCH_SIZE:-32}
+      BUYCOTT_EMBEDDING_NORMALIZE: ${BUYCOTT_EMBEDDING_NORMALIZE:-true}
+      BUYCOTT_ONTOLOGY_MIN_DEPTH: ${BUYCOTT_ONTOLOGY_MIN_DEPTH:-3}
+      BUYCOTT_ONTOLOGY_MAX_DEPTH: ${BUYCOTT_ONTOLOGY_MAX_DEPTH:-5}
+    ports:
+      - '${BUYCOTT_API_PORT:-8000}:8000'
+    working_dir: /workspace
+    command: >
+      bash -lc "
+      cd backend &&
+      python scripts/wait_for_db.py &&
+      python scripts/init_db.py &&
+      python scripts/seed_ontology.py &&
+      python scripts/seed_businesses.py &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
+  openclaw:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.python
+    container_name: buycott-openclaw
+    depends_on:
+      - postgres
+    environment:
+      BUYCOTT_DATABASE_URL: postgresql+psycopg://buycott:buycott@postgres:5432/buycott
+      BUYCOTT_EMBEDDING_MODEL: ${BUYCOTT_EMBEDDING_MODEL:-BAAI/bge-small-en-v1.5}
+      BUYCOTT_EMBEDDING_DEVICE: ${BUYCOTT_EMBEDDING_DEVICE:-cpu}
+      OPENCLAW_GPU_ENABLED: ${OPENCLAW_GPU_ENABLED:-false}
+      OPENCLAW_NVIDIA_SPARK_CLUSTER: ${OPENCLAW_NVIDIA_SPARK_CLUSTER:-disabled}
+    working_dir: /workspace
+    command: >
+      bash -lc "
+      python openclaw/run_openclaw.py
+      "
+    profiles:
+      - ingest
+
+volumes:
+  buycott_pgdata:
