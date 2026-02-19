@@ -7,6 +7,7 @@ This roadmap defines the next critical system upgrades required to stabilize, op
 # Phase 1: Observability (Highest Priority)
 
 ## Problem
+
 Currently, the system lacks visibility into performance characteristics. You do not know:
 
 - How long search takes
@@ -15,6 +16,7 @@ Currently, the system lacks visibility into performance characteristics. You do 
 - What similarity scores look like
 
 ## Objectives
+
 Add full timing instrumentation across the search pipeline.
 
 ## Required Metrics
@@ -31,6 +33,7 @@ Log the following for every search request:
 ### Conceptual Example
 
 Search request:
+
 - embedding_time = 42ms
 - db_time = 18ms
 - ranking_time = 3ms
@@ -52,6 +55,7 @@ Without observability, optimization is guesswork.
 # Phase 2: Query Logging and Analytics
 
 ## Problem
+
 The system does not retain query behavior data.
 
 ## Required Data to Store
@@ -101,6 +105,7 @@ rank = semantic_similarity * semantic_weight + distance_decay
 # Phase 4: Hybrid Search (Semantic + Keyword)
 
 ## Problem
+
 Pure semantic search can produce false positives.
 
 ## Upgrade
@@ -211,6 +216,7 @@ Add:
 - Improved user experience
 - Increased relevance
 - Advanced system capability
+- Lock in UI / UX
 
 ---
 
@@ -224,8 +230,6 @@ Add:
 6. Caching
 7. Background Embedding Jobs
 8. Personalization
-
----
 
 # Strategic Principle
 
