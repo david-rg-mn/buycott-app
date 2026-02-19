@@ -1,23 +1,27 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
-from app.api.routes import router
-from app.config import get_settings
-from app.phase0_identity_lock.schema_guard import assert_schema_invariants
+from .config import settings
+from .database import SessionLocal
+from .routes.search import router as search_router
+from .schemas import HealthResponse
 
-settings = get_settings()
+app = FastAPI(title=settings.app_name, version="0.1.0")
 
-app = FastAPI(title=settings.app_name)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.include_router(router)
+
+app.include_router(search_router, prefix="/api")
 
 
-@app.on_event("startup")
-def on_startup() -> None:
-    assert_schema_invariants()
+@app.get("/health", response_model=HealthResponse)
+def healthcheck() -> HealthResponse:
+    with SessionLocal() as session:
+        session.execute(text("SELECT 1"))
+    return HealthResponse(status="ok")

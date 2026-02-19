@@ -1,0 +1,283 @@
+[
+  {
+    "name": "Panaderia La Esperanza",
+    "lat": 44.9786,
+    "lng": -93.2651,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0101",
+    "website": "https://panaderia-esperanza.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["07:00", "19:00"]],
+      "tue": [["07:00", "19:00"]],
+      "wed": [["07:00", "19:00"]],
+      "thu": [["07:00", "19:00"]],
+      "fri": [["07:00", "20:00"]],
+      "sat": [["08:00", "20:00"]],
+      "sun": [["08:00", "16:00"]]
+    },
+    "text_content": "Family bakery making custom birthday cakes, celebration desserts, cake toppers, and birthday candles. Carries baking supplies and party cake decorations.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://panaderia-esperanza.example/menu", "snippet": "Custom birthday cakes and celebration desserts"},
+      {"source_type": "directory", "source_url": "https://directory.example/panaderia-la-esperanza", "snippet": "Bakery, cakes, candles"}
+    ]
+  },
+  {
+    "name": "TechFix Phone Repair",
+    "lat": 44.9757,
+    "lng": -93.2694,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0102",
+    "website": "https://techfix-repair.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["10:00", "20:00"]],
+      "tue": [["10:00", "20:00"]],
+      "wed": [["10:00", "20:00"]],
+      "thu": [["10:00", "20:00"]],
+      "fri": [["10:00", "21:00"]],
+      "sat": [["10:00", "21:00"]],
+      "sun": [["11:00", "18:00"]]
+    },
+    "text_content": "Phone repair shop for iPhone and Android devices. Stocks charging cables, USB-C to Lightning cables, screen protectors, and phone chargers.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://techfix-repair.example/accessories", "snippet": "iPhone repair and accessories"},
+      {"source_type": "places", "source_url": "https://places.example/techfix", "snippet": "Phone repair and charging products"}
+    ]
+  },
+  {
+    "name": "Midwest Camera Exchange",
+    "lat": 44.9812,
+    "lng": -93.2721,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0103",
+    "website": "https://midwest-camera.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["09:00", "18:00"]],
+      "tue": [["09:00", "18:00"]],
+      "wed": [["09:00", "18:00"]],
+      "thu": [["09:00", "19:00"]],
+      "fri": [["09:00", "19:00"]],
+      "sat": [["10:00", "18:00"]],
+      "sun": [["11:00", "16:00"]]
+    },
+    "text_content": "Camera specialty store with analog film cameras, 35mm film rolls, camera battery chargers, camera straps, and film development services.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://midwest-camera.example/film", "snippet": "Film cameras and film development"},
+      {"source_type": "directory", "source_url": "https://directory.example/midwest-camera", "snippet": "Photography equipment and accessories"}
+    ]
+  },
+  {
+    "name": "Joe's Hardware",
+    "lat": 44.9736,
+    "lng": -93.2631,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0104",
+    "website": "https://joes-hardware.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["08:00", "19:00"]],
+      "tue": [["08:00", "19:00"]],
+      "wed": [["08:00", "19:00"]],
+      "thu": [["08:00", "19:00"]],
+      "fri": [["08:00", "19:00"]],
+      "sat": [["08:00", "18:00"]],
+      "sun": [["09:00", "16:00"]]
+    },
+    "text_content": "Neighborhood hardware store with hand tools, screwdrivers, precision screwdriver sets, moving supplies, boxes, bubble wrap, and packing tape.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://joes-hardware.example/tools", "snippet": "Tools and moving supplies"},
+      {"source_type": "places", "source_url": "https://places.example/joes-hardware", "snippet": "Hardware and packaging supplies"}
+    ]
+  },
+  {
+    "name": "Jackson's Tools",
+    "lat": 44.9698,
+    "lng": -93.2583,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0105",
+    "website": "https://jacksons-tools.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["08:30", "18:00"]],
+      "tue": [["08:30", "18:00"]],
+      "wed": [["08:30", "18:00"]],
+      "thu": [["08:30", "18:00"]],
+      "fri": [["08:30", "18:00"]],
+      "sat": [["09:00", "16:00"]],
+      "sun": []
+    },
+    "text_content": "Independent tools shop focused on repair tools, precision screwdrivers, hand tools, and maintenance kits.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://jacksons-tools.example/catalog", "snippet": "Tools and repair supplies"}
+    ]
+  },
+  {
+    "name": "Abdul's Phone Repair MOA Kiosk #3",
+    "lat": 44.9799,
+    "lng": -93.2618,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0106",
+    "website": "https://abduls-phone-repair.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["10:00", "21:00"]],
+      "tue": [["10:00", "21:00"]],
+      "wed": [["10:00", "21:00"]],
+      "thu": [["10:00", "21:00"]],
+      "fri": [["10:00", "22:00"]],
+      "sat": [["10:00", "22:00"]],
+      "sun": [["11:00", "18:00"]]
+    },
+    "text_content": "Kiosk offering quick phone repair, tempered glass screen protectors, iPhone accessories, charging cables, and portable batteries.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://abduls-phone-repair.example/services", "snippet": "Phone repair and protection services"},
+      {"source_type": "directory", "source_url": "https://directory.example/abduls-kiosk", "snippet": "Accessories and chargers"}
+    ]
+  },
+  {
+    "name": "Vikings Bakery",
+    "lat": 44.9843,
+    "lng": -93.2561,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0107",
+    "website": "https://vikings-bakery.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["06:30", "18:00"]],
+      "tue": [["06:30", "18:00"]],
+      "wed": [["06:30", "18:00"]],
+      "thu": [["06:30", "18:00"]],
+      "fri": [["06:30", "19:00"]],
+      "sat": [["07:00", "19:00"]],
+      "sun": [["07:00", "16:00"]]
+    },
+    "text_content": "Celebration bakery specializing in birthday cakes, cake decoration supplies, and birthday cake candles.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://vikings-bakery.example/cakes", "snippet": "Birthday cakes and celebration cakes"}
+    ]
+  },
+  {
+    "name": "Andy's Moving Supply",
+    "lat": 44.9674,
+    "lng": -93.2702,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0108",
+    "website": "https://andys-moving-supply.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["09:00", "18:00"]],
+      "tue": [["09:00", "18:00"]],
+      "wed": [["09:00", "18:00"]],
+      "thu": [["09:00", "18:00"]],
+      "fri": [["09:00", "18:00"]],
+      "sat": [["09:00", "17:00"]],
+      "sun": [["10:00", "15:00"]]
+    },
+    "text_content": "Moving and shipping supply store carrying boxes, bubble wrap, moving box tape, and heavy-duty packing tape.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://andys-moving-supply.example/products", "snippet": "Moving and storage supplies"}
+    ]
+  },
+  {
+    "name": "Jeff's Electronics",
+    "lat": 44.9711,
+    "lng": -93.2765,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0109",
+    "website": "https://jeffs-electronics.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["10:00", "19:00"]],
+      "tue": [["10:00", "19:00"]],
+      "wed": [["10:00", "19:00"]],
+      "thu": [["10:00", "19:00"]],
+      "fri": [["10:00", "19:00"]],
+      "sat": [["10:00", "18:00"]],
+      "sun": [["11:00", "17:00"]]
+    },
+    "text_content": "Electronics counter with AA batteries, charging cables, phone chargers, and basic camera accessories.",
+    "sources": [
+      {"source_type": "places", "source_url": "https://places.example/jeffs-electronics", "snippet": "Electronics and accessories"}
+    ]
+  },
+  {
+    "name": "MegaMart Supercenter",
+    "lat": 44.9652,
+    "lng": -93.2529,
+    "is_chain": true,
+    "chain_name": "MegaMart",
+    "phone": "+1-612-555-0110",
+    "website": "https://megamart.example/store/minneapolis-uptown",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["06:00", "23:00"]],
+      "tue": [["06:00", "23:00"]],
+      "wed": [["06:00", "23:00"]],
+      "thu": [["06:00", "23:00"]],
+      "fri": [["06:00", "23:00"]],
+      "sat": [["06:00", "23:00"]],
+      "sun": [["06:00", "22:00"]]
+    },
+    "text_content": "Large chain supercenter carrying groceries, electronics accessories, batteries, packing tape, and seasonal birthday supplies.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://megamart.example/departments", "snippet": "Electronics and moving supplies"}
+    ]
+  },
+  {
+    "name": "BestElectro",
+    "lat": 44.9902,
+    "lng": -93.2801,
+    "is_chain": true,
+    "chain_name": "BestElectro",
+    "phone": "+1-612-555-0111",
+    "website": "https://bestelectro.example/stores/minneapolis",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["10:00", "21:00"]],
+      "tue": [["10:00", "21:00"]],
+      "wed": [["10:00", "21:00"]],
+      "thu": [["10:00", "21:00"]],
+      "fri": [["10:00", "21:00"]],
+      "sat": [["10:00", "21:00"]],
+      "sun": [["11:00", "19:00"]]
+    },
+    "text_content": "National electronics chain selling phone accessories, charging cables, camera batteries, and portable power products.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://bestelectro.example/accessories", "snippet": "Phone accessories and chargers"}
+    ]
+  },
+  {
+    "name": "Urban Cell Hub",
+    "lat": 44.9829,
+    "lng": -93.2487,
+    "is_chain": false,
+    "chain_name": null,
+    "phone": "+1-612-555-0112",
+    "website": "https://urban-cell-hub.example",
+    "timezone": "America/Chicago",
+    "hours_json": {
+      "mon": [["11:00", "20:00"]],
+      "tue": [["11:00", "20:00"]],
+      "wed": [["11:00", "20:00"]],
+      "thu": [["11:00", "20:00"]],
+      "fri": [["11:00", "20:00"]],
+      "sat": [["11:00", "20:00"]],
+      "sun": [["12:00", "18:00"]]
+    },
+    "text_content": "Independent phone accessory specialist with USB-C cables, Lightning cables, tempered glass, and fast-charging adapters.",
+    "sources": [
+      {"source_type": "website", "source_url": "https://urban-cell-hub.example/catalog", "snippet": "Phone accessories and protection"}
+    ]
+  }
+]

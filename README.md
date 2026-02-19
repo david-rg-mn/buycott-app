@@ -1,102 +1,151 @@
-# Buycott Implementation (Phases 0-2)
+# Buycott
 
-Buycott is implemented as a **semantic geographic capability index**.
+Buycott is a semantic, map-first civic discovery app for finding where an item can likely be obtained nearby.
 
-This repo now contains the full layered system described by the blueprint docs:
-- Phase 0: Identity lock, governance, forbidden ranking controls
-- Phase 1: L4 semantic query pipeline with ontology expansion + pgvector similarity
-- Phase 2: Transparency, capability visualization, semantic suggestions, local/open/walking filters
+This repository now contains a working Phase 0-2 vertical slice implementation:
 
-## Architecture Layers
+- `FastAPI` backend API
+- `PostgreSQL + pgvector` schema
+- OpenClaw-style extraction + embedding + capability mapping pipeline
+- Ontology expansion and semantic vector search
+- Flutter map-first client with evidence/explainability features
 
-- `backend/app/phase0_identity_lock/`
-- `backend/app/phase1_semantic_pipeline/`
-- `backend/app/phase2_transparency_ux/`
+## Architecture
 
-Strict layering is enforced by design:
-- Phase 0 modules validate policy/parameters and prevent ranking controls.
-- Phase 1 modules execute embeddings, deterministic ontology expansion (3-5 levels), and vector search.
-- Phase 2 modules add transparency outputs, evidence explanations, capability views, and accessibility filters.
+Implementation aligns with:
 
-## Repository Structure
+- `seed_docs/README.md`
+- `seed_docs/phase-summary.md`
+- `seed_docs/phase0.md`
+- `seed_docs/phase1.md`
+- `seed_docs/phase2.md`
+- `seed_docs/tecbincal-architectural-blueprint.md`
 
-- `backend/` FastAPI + PostgreSQL/pgvector semantic API
-- `openclaw/` extraction agents and ingestion pipeline
-- `frontend/` Flutter map-first client with gradient pin UX and bottom sheets
-- `infra/postgres/init.sql` pgvector schema initialization
-- `blueprints/` original specification documents
+Key invariant enforcement:
 
-## Data Flow
+- Local-first default (`include_chains=false`)
+- No monetization/popularity/ranking fields
+- Evidence score is transparency-only
+- Search ordering by geographic distance
+- Ontology expansion depth constrained (default `4`)
 
-### Extraction Pipeline
-1. Public sources (`openclaw/config/public_sources.json`)
-2. OpenClaw agent extraction (`openclaw/agents/public_business_agent.py`)
-3. Text extraction + cleaning
-4. Embedding generation (`phase1_semantic_pipeline/embeddings.py`)
-5. PostgreSQL/pgvector storage (`businesses`, `business_sources`, `business_capabilities`)
+## Repo Layout
 
-### Search Pipeline
-1. User query
-2. Query embedding
-3. Ontology expansion (parent-only, deterministic, 3-5 levels)
-4. Expanded vector search against `businesses.embedding`
-5. Local-first filtering (`is_chain=false` default)
-6. Open-now / walking-distance filters (optional)
-7. Distance sorting (no popularity/revenue ranking)
-8. Result assembly with evidence strength + minutes away
+- `backend/` FastAPI API and search services
+- `database/schema.sql` pgvector schema + indexes
+- `data/raw/` seed ontology and extracted public business text
+- `pipeline/` ingestion, embedding, and capability scripts
+- `frontend/buycott_flutter/` Flutter app
+- `seed_docs/` original architecture documents
 
-## Database Models
+## Prerequisites
 
-Implemented core schema in `infra/postgres/init.sql` and `backend/app/db/models.py`:
-- `businesses`
-- `ontology_terms`
-- `business_sources`
-- `business_capabilities`
-- `business_hours`
-
-## API Surface
-
-Core endpoints:
-- `GET /search`
-- `GET /search_suggestions`
-- `GET /related_items`
-- `GET /evidence_explanation`
-- `GET /source_transparency`
-- `GET /business_capabilities`
-- `GET /filter_local_only`
-- `GET /filter_open_now`
-- `GET /filter_walking_distance`
-
-Evidence score is exposed for transparency only; ordering is distance-based.
+- Docker Desktop (or Docker Engine) running locally
+- Python 3.9+
+- Flutter SDK (for mobile app only)
 
 ## Quick Start
 
-1. Copy env values:
+### 1. Start database and API with Docker
+
 ```bash
-cp .env.example .env
+docker compose up --build -d
 ```
 
-2. Start database + backend:
+### 2. Run pipeline (seed + embeddings + capabilities)
+
 ```bash
-docker compose up --build postgres backend
+python3 pipeline/run_full_pipeline.py
 ```
 
-3. Run OpenClaw ingestion (optional profile, one-shot):
+`run_full_pipeline.py` defaults to `--mode auto`:
+
+- Uses local Python packages if available
+- Falls back to the running Docker `api` service if local packages are missing
+
+If you need to re-apply schema first:
+
 ```bash
-docker compose --profile ingest up --build openclaw
+python3 pipeline/run_full_pipeline.py --with-schema
 ```
 
-4. Run Flutter app:
+### 3. Verify backend
+
 ```bash
-cd frontend
+curl http://localhost:8000/health
+curl "http://localhost:8000/api/search?query=usb-c%20to%20lightning%20cable&lat=44.9778&lng=-93.2650"
+```
+
+## Local Backend Run (without Docker)
+
+1. Create Postgres DB with pgvector.
+2. Set env vars from `backend/.env.example`.
+3. Install dependencies:
+
+```bash
+python3 -m pip install -r backend/requirements.txt
+```
+
+4. Apply schema and run pipeline:
+
+```bash
+python3 pipeline/init_db.py
+python3 pipeline/run_full_pipeline.py --mode local
+```
+
+5. Start API:
+
+```bash
+cd backend && uvicorn app.main:app --reload
+```
+
+## Flutter App
+
+```bash
+cd frontend/buycott_flutter
 flutter pub get
 flutter run --dart-define=BUYCOTT_API_URL=http://localhost:8000
 ```
 
-## Governance Guarantees
+If `flutter` is not found, install Flutter SDK and add it to your shell `PATH`.
 
-The backend enforces Phase 0 identity lock:
-- Forbidden query params (`rank_by`, `boost`, `promoted`, etc.) are rejected.
-- Default search policy is local-first (`include_chains=false`).
-- No schema fields for popularity/engagement/monetization ranking are present.
-- Ontology expansion is parent-only and acyclic.
+Main implemented UI/features:
+
+- Full-screen map with semantic pins
+- Search + ontology suggestions
+- Local-only toggle (default on)
+- Open-now + walking-distance filters
+- Evidence score square (minutes + confidence)
+- Evidence explanation panel
+- Capability discovery panel
+- Independent + specialist badges
+- Related-item ontology suggestions
+
+## Backend Endpoints
+
+- `GET /health`
+- `GET /api/search`
+- `GET /api/search_suggestions`
+- `GET /api/evidence_explanation`
+- `GET /api/business_capabilities/{business_id}`
+- `GET /api/filter_local_only`
+- `GET /api/filter_open_now`
+- `GET /api/filter_walking_distance`
+
+## Pipeline Commands
+
+- `python3 pipeline/init_db.py`
+- `python3 pipeline/load_ontology.py`
+- `python3 pipeline/openclaw_extract.py`
+- `python3 pipeline/build_embeddings.py`
+- `python3 pipeline/rebuild_capabilities.py`
+- `python3 pipeline/run_full_pipeline.py`
+- `python3 pipeline/run_full_pipeline.py --mode local`
+- `python3 pipeline/run_full_pipeline.py --mode docker`
+
+## Testing
+
+```bash
+cd backend
+pytest
+```
