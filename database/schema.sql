@@ -53,6 +53,19 @@ CREATE TABLE IF NOT EXISTS business_capabilities (
   UNIQUE (business_id, ontology_term)
 );
 
+CREATE TABLE IF NOT EXISTS telemetry_logs (
+  request_id UUID PRIMARY KEY,
+  query_text TEXT,
+  embedding_time_ms DOUBLE PRECISION,
+  expansion_time_ms DOUBLE PRECISION,
+  db_time_ms DOUBLE PRECISION,
+  ranking_time_ms DOUBLE PRECISION,
+  total_time_ms DOUBLE PRECISION,
+  result_count INTEGER,
+  top_similarity_score DOUBLE PRECISION,
+  timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_businesses_lat_lng ON businesses(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_businesses_is_chain ON businesses(is_chain);
 CREATE INDEX IF NOT EXISTS idx_business_sources_business_id ON business_sources(business_id);
@@ -60,6 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_ontology_terms_parent_term ON ontology_terms(pare
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_term_trgm ON ontology_terms USING GIN (term gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_business_id ON business_capabilities(business_id);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_term ON business_capabilities(ontology_term);
+CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs(timestamp DESC);
 
 DO $$
 BEGIN

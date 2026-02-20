@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pgvector.sqlalchemy import Vector
@@ -9,11 +10,13 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Integer,
     String,
     Text,
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -104,3 +107,18 @@ class BusinessCapability(Base):
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     business: Mapped[Business] = relationship(back_populates="capabilities")
+
+
+class TelemetryLog(Base):
+    __tablename__ = "telemetry_logs"
+
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    query_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embedding_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    expansion_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    db_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ranking_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    total_time_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    result_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    top_similarity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default=func.now())

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,24 @@ class Settings(BaseSettings):
 
     walking_threshold_minutes: int = 15
     default_timezone: str = "America/Chicago"
+
+    log_level: str = Field(default="INFO", validation_alias=AliasChoices("LOG_LEVEL", "BUYCOTT_LOG_LEVEL"))
+    perf_log_level: str = Field(
+        default="PERF",
+        validation_alias=AliasChoices("PERF_LOG_LEVEL", "BUYCOTT_PERF_LOG_LEVEL"),
+    )
+    telemetry_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("TELEMETRY_ENABLED", "BUYCOTT_TELEMETRY_ENABLED"),
+    )
+
+    @field_validator("log_level", "perf_log_level")
+    @classmethod
+    def _normalize_log_level(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if normalized not in {"DEBUG", "INFO", "PERF", "WARNING", "ERROR", "CRITICAL"}:
+            raise ValueError("Unsupported log level")
+        return normalized
 
 
 @lru_cache(maxsize=1)

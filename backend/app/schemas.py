@@ -34,6 +34,7 @@ class BusinessSearchResult(BaseModel):
     badges: list[str]
     matched_terms: list[str]
     last_updated: datetime
+    request_id: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -43,6 +44,7 @@ class SearchResponse(BaseModel):
     local_only: bool
     filters: dict[str, bool | int]
     results: list[BusinessSearchResult]
+    request_id: str | None = None
 
 
 class SuggestionsResponse(BaseModel):
@@ -67,3 +69,12 @@ class EvidenceExplanationResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class HealthMetricsResponse(BaseModel):
+    sample_size: int
+    avg_embedding_time_ms: float
+    avg_db_time_ms: float
+    avg_ranking_time_ms: float
+    avg_expansion_time_ms: float
+    avg_total_time_ms: float

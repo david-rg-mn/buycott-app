@@ -112,6 +112,7 @@ If `flutter` is not found, install Flutter SDK and add it to your shell `PATH`.
 Main implemented UI/features:
 
 - Full-screen map with semantic pins
+- Time-to-possession pin metric (minutes-away) with traceable request IDs
 - Search + ontology suggestions
 - Local-only toggle (default on)
 - Open-now + walking-distance filters
@@ -124,6 +125,7 @@ Main implemented UI/features:
 ## Backend Endpoints
 
 - `GET /health`
+- `GET /health/metrics`
 - `GET /api/search`
 - `GET /api/search_suggestions`
 - `GET /api/evidence_explanation`
@@ -131,6 +133,11 @@ Main implemented UI/features:
 - `GET /api/filter_local_only`
 - `GET /api/filter_open_now`
 - `GET /api/filter_walking_distance`
+
+All `/api/*` responses now include:
+
+- `X-Search-Performance`: structured stage timings (`embedding`, `expansion`, `db`, `ranking`, `total`)
+- `X-Request-Id`: request trace identifier that maps to `telemetry_logs.request_id`
 
 ## Pipeline Commands
 

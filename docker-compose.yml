@@ -21,6 +21,9 @@ services:
       DATABASE_URL: postgresql+psycopg://buycott:buycott@db:5432/buycott
       ENABLE_MODEL_EMBEDDINGS: "true"
       EMBEDDING_MODEL_NAME: sentence-transformers/all-MiniLM-L6-v2
+      LOG_LEVEL: INFO
+      PERF_LOG_LEVEL: PERF
+      TELEMETRY_ENABLED: "true"
     ports:
       - "8000:8000"
     volumes:

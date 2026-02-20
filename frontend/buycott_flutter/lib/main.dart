@@ -60,6 +60,7 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
   String? _error;
 
   SearchPayload? _searchPayload;
+  SearchPerformanceMetrics? _searchPerformance;
   List<SearchResult> _results = const [];
   List<String> _suggestions = const [];
 
@@ -132,6 +133,7 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
 
       setState(() {
         _searchPayload = payload;
+        _searchPerformance = payload.performance;
         _results = payload.results;
         _loading = false;
       });
@@ -233,9 +235,18 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                   const SizedBox(height: 6),
                   Text('${result.distanceKm.toStringAsFixed(1)} km away'),
                   const SizedBox(height: 4),
+                  Text('Time-to-possession: ${result.minutesAway}m'),
+                  const SizedBox(height: 4),
                   Text('Driving ${result.drivingMinutes}m • Walking ${result.walkingMinutes}m'),
                   const SizedBox(height: 4),
                   Text(_freshnessLabel(result.lastUpdated)),
+                  if ((result.requestId ?? _searchPayload?.requestId) != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Trace request: ${result.requestId ?? _searchPayload?.requestId}',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
@@ -459,6 +470,25 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
     return 'Last updated $days days ago';
   }
 
+  String? _traceSummaryLabel() {
+    final requestId = _searchPayload?.requestId;
+    final compactRequestId = (requestId != null && requestId.length > 8)
+        ? requestId.substring(0, 8)
+        : requestId;
+    final totalMs = _searchPerformance?.totalTimeMs;
+
+    if (compactRequestId != null && totalMs != null) {
+      return 'Trace $compactRequestId • API ${totalMs.toStringAsFixed(1)} ms';
+    }
+    if (compactRequestId != null) {
+      return 'Trace $compactRequestId';
+    }
+    if (totalMs != null) {
+      return 'API ${totalMs.toStringAsFixed(1)} ms';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final markers = _results
@@ -472,10 +502,13 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  EvidenceSquare(
-                    minutes: result.minutesAway,
-                    evidence: result.evidenceScore,
-                    highlight: !result.isChain,
+                  Tooltip(
+                    message: 'request_id: ${result.requestId ?? _searchPayload?.requestId ?? 'n/a'}',
+                    child: EvidenceSquare(
+                      minutes: result.minutesAway,
+                      evidence: result.evidenceScore,
+                      highlight: !result.isChain,
+                    ),
                   ),
                   const Icon(Icons.location_pin, size: 26, color: Color(0xFF1E293B)),
                 ],
@@ -527,7 +560,7 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                 margin: const EdgeInsets.all(12),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.96),
+                  color: Colors.white.withValues(alpha: 0.96),
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: const [
                     BoxShadow(
@@ -623,6 +656,16 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                           style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                       ),
+                      if (_traceSummaryLabel() != null) ...[
+                        const SizedBox(height: 2),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            _traceSummaryLabel()!,
+                            style: const TextStyle(fontSize: 12, color: Color(0xFF0F766E)),
+                          ),
+                        ),
+                      ],
                     ],
                     if ((_searchPayload?.expansionChain ?? []).isNotEmpty) ...[
                       const SizedBox(height: 8),

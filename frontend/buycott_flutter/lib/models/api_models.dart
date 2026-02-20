@@ -1,3 +1,26 @@
+double? _toDouble(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is num) {
+    return value.toDouble();
+  }
+  return double.tryParse(value.toString());
+}
+
+int? _toInt(dynamic value) {
+  if (value == null) {
+    return null;
+  }
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.round();
+  }
+  return int.tryParse(value.toString());
+}
+
 class SearchResult {
   SearchResult({
     required this.id,
@@ -17,6 +40,7 @@ class SearchResult {
     this.chainName,
     this.phone,
     this.website,
+    this.requestId,
   });
 
   final int id;
@@ -36,8 +60,9 @@ class SearchResult {
   final String? chainName;
   final String? phone;
   final String? website;
+  final String? requestId;
 
-  factory SearchResult.fromJson(Map<String, dynamic> json) {
+  factory SearchResult.fromJson(Map<String, dynamic> json, {String? requestId}) {
     return SearchResult(
       id: json['id'] as int,
       name: json['name'] as String,
@@ -56,6 +81,42 @@ class SearchResult {
       chainName: json['chain_name'] as String?,
       phone: json['phone'] as String?,
       website: json['website'] as String?,
+      requestId: json['request_id'] as String? ?? requestId,
+    );
+  }
+}
+
+class SearchPerformanceMetrics {
+  SearchPerformanceMetrics({
+    this.requestId,
+    this.embeddingTimeMs,
+    this.expansionTimeMs,
+    this.dbTimeMs,
+    this.rankingTimeMs,
+    this.totalTimeMs,
+    this.resultCount,
+    this.topSimilarityScore,
+  });
+
+  final String? requestId;
+  final double? embeddingTimeMs;
+  final double? expansionTimeMs;
+  final double? dbTimeMs;
+  final double? rankingTimeMs;
+  final double? totalTimeMs;
+  final int? resultCount;
+  final double? topSimilarityScore;
+
+  factory SearchPerformanceMetrics.fromJson(Map<String, dynamic> json) {
+    return SearchPerformanceMetrics(
+      requestId: json['request_id'] as String?,
+      embeddingTimeMs: _toDouble(json['embedding_time_ms']),
+      expansionTimeMs: _toDouble(json['expansion_time_ms']),
+      dbTimeMs: _toDouble(json['db_time_ms']),
+      rankingTimeMs: _toDouble(json['ranking_time_ms']),
+      totalTimeMs: _toDouble(json['total_time_ms']),
+      resultCount: _toInt(json['result_count']),
+      topSimilarityScore: _toDouble(json['top_similarity_score']),
     );
   }
 }
@@ -67,6 +128,8 @@ class SearchPayload {
     required this.relatedItems,
     required this.localOnly,
     required this.results,
+    this.requestId,
+    this.performance,
   });
 
   final String query;
@@ -74,16 +137,29 @@ class SearchPayload {
   final List<String> relatedItems;
   final bool localOnly;
   final List<SearchResult> results;
+  final String? requestId;
+  final SearchPerformanceMetrics? performance;
 
-  factory SearchPayload.fromJson(Map<String, dynamic> json) {
+  factory SearchPayload.fromJson(
+    Map<String, dynamic> json, {
+    SearchPerformanceMetrics? performance,
+  }) {
+    final requestId = json['request_id'] as String? ?? performance?.requestId;
     return SearchPayload(
       query: json['query'] as String,
       expansionChain: (json['expansion_chain'] as List<dynamic>? ?? []).cast<String>(),
       relatedItems: (json['related_items'] as List<dynamic>? ?? []).cast<String>(),
       localOnly: json['local_only'] as bool? ?? true,
       results: (json['results'] as List<dynamic>? ?? [])
-          .map((item) => SearchResult.fromJson(item as Map<String, dynamic>))
+          .map(
+            (item) => SearchResult.fromJson(
+              item as Map<String, dynamic>,
+              requestId: requestId,
+            ),
+          )
           .toList(),
+      requestId: requestId,
+      performance: performance,
     );
   }
 }

@@ -26,6 +26,28 @@ class BuycottApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  SearchPerformanceMetrics? _parsePerformanceHeader(http.Response response) {
+    final rawHeader = response.headers['x-search-performance'];
+    if (rawHeader == null || rawHeader.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(rawHeader);
+      if (decoded is Map<String, dynamic>) {
+        return SearchPerformanceMetrics.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        final jsonMap = decoded.map(
+          (key, value) => MapEntry(key.toString(), value),
+        );
+        return SearchPerformanceMetrics.fromJson(jsonMap);
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   Future<SearchPayload> search({
     required String query,
     required double lat,
@@ -45,8 +67,13 @@ class BuycottApiService {
       'walking_threshold_minutes': walkingThresholdMinutes.toString(),
     });
 
-    final json = await _getJson(uri);
-    return SearchPayload.fromJson(json);
+    final response = await http.get(uri);
+    if (response.statusCode >= 400) {
+      throw Exception('API error ${response.statusCode}: ${response.body}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final performance = _parsePerformanceHeader(response);
+    return SearchPayload.fromJson(json, performance: performance);
   }
 
   Future<List<String>> suggestions(String partial, {int limit = 8}) async {

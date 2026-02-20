@@ -15,6 +15,7 @@ from ..schemas import (
     SearchResponse,
     SourceView,
 )
+from ..telemetry import get_current_trace, instrument_stage
 from .distance_service import compute_travel_minutes, haversine_km
 from .embedding_service import get_embedding_service
 from .ontology_service import ontology_service
@@ -76,30 +77,73 @@ class SearchService:
     def __init__(self) -> None:
         self.embedding_service = get_embedding_service()
 
-    def search(self, db: Session, params: SearchParams) -> SearchResponse:
-        clean_query = params.query.strip()
-        if not clean_query:
-            return SearchResponse(
-                query=params.query,
-                expansion_chain=[],
-                related_items=[],
-                local_only=not params.include_chains,
-                filters={
-                    "include_chains": params.include_chains,
-                    "open_now": params.open_now,
-                    "walking_distance": params.walking_distance,
-                    "walking_threshold_minutes": params.walking_threshold_minutes,
-                },
-                results=[],
-            )
+    @staticmethod
+    def _filters_payload(params: SearchParams) -> dict[str, bool | int]:
+        return {
+            "include_chains": params.include_chains,
+            "open_now": params.open_now,
+            "walking_distance": params.walking_distance,
+            "walking_threshold_minutes": params.walking_threshold_minutes,
+        }
 
-        expansion_chain = ontology_service.expand_query(db, clean_query)
-        query_terms = [clean_query]
-        for term in expansion_chain:
-            if term.lower() not in {existing.lower() for existing in query_terms}:
-                query_terms.append(term)
+    @staticmethod
+    def _current_request_id() -> str | None:
+        trace = get_current_trace()
+        if trace is None:
+            return None
+        return str(trace.request_id)
 
-        vectors = self.embedding_service.encode_many(query_terms)
+    @staticmethod
+    def _record_trace_query(query_text: str) -> None:
+        trace = get_current_trace()
+        if trace is None:
+            return
+        trace.mark_query(query_text)
+
+    @staticmethod
+    def _record_trace_results(result_count: int, top_similarity_score: float | None) -> None:
+        trace = get_current_trace()
+        if trace is None:
+            return
+        trace.set_result_summary(result_count, top_similarity_score)
+
+    def _empty_response(
+        self,
+        query: str,
+        expansion_chain: list[str],
+        related_items: list[str],
+        params: SearchParams,
+    ) -> SearchResponse:
+        return SearchResponse(
+            query=query,
+            expansion_chain=expansion_chain,
+            related_items=related_items,
+            local_only=not params.include_chains,
+            filters=self._filters_payload(params),
+            results=[],
+            request_id=self._current_request_id(),
+        )
+
+    @instrument_stage("expansion")
+    def _expand_query(self, db: Session, query: str) -> list[str]:
+        return ontology_service.expand_query(db, query)
+
+    @instrument_stage("expansion")
+    def _related_items(self, db: Session, query: str) -> list[str]:
+        return ontology_service.related_items(db, query)
+
+    @instrument_stage("embedding")
+    def _encode_terms(self, query_terms: list[str]) -> list[list[float]]:
+        return self.embedding_service.encode_many(query_terms)
+
+    @instrument_stage("db")
+    def _collect_candidates(
+        self,
+        db: Session,
+        params: SearchParams,
+        query_terms: list[str],
+        vectors: list[list[float]],
+    ) -> dict[int, Candidate]:
         candidate_map: dict[int, Candidate] = {}
 
         for idx, vector in enumerate(vectors):
@@ -128,26 +172,34 @@ class SearchService:
                     if similarity_float > existing.similarity:
                         existing.similarity = similarity_float
 
-        if not candidate_map:
-            return SearchResponse(
-                query=clean_query,
-                expansion_chain=expansion_chain,
-                related_items=ontology_service.related_items(db, clean_query),
-                local_only=not params.include_chains,
-                filters={
-                    "include_chains": params.include_chains,
-                    "open_now": params.open_now,
-                    "walking_distance": params.walking_distance,
-                    "walking_threshold_minutes": params.walking_threshold_minutes,
-                },
-                results=[],
-            )
+        return candidate_map
 
-        business_ids = list(candidate_map.keys())
-        capabilities_map = _fetch_capabilities(db, business_ids)
-        _ = _fetch_sources(db, business_ids)
+    @instrument_stage("db")
+    def _fetch_capabilities_map(
+        self,
+        db: Session,
+        business_ids: list[int],
+    ) -> dict[int, list[BusinessCapability]]:
+        return _fetch_capabilities(db, business_ids)
 
+    @instrument_stage("db")
+    def _fetch_sources_map(
+        self,
+        db: Session,
+        business_ids: list[int],
+    ) -> dict[int, list[BusinessSource]]:
+        return _fetch_sources(db, business_ids)
+
+    @instrument_stage("ranking")
+    def _rank_candidates(
+        self,
+        candidate_map: dict[int, Candidate],
+        capabilities_map: dict[int, list[BusinessCapability]],
+        params: SearchParams,
+        request_id: str | None,
+    ) -> tuple[list[BusinessSearchResult], float]:
         result_rows: list[BusinessSearchResult] = []
+        top_similarity = 0.0
 
         for candidate in candidate_map.values():
             if candidate.similarity < settings.min_similarity:
@@ -172,6 +224,7 @@ class SearchService:
             if business.specialty_score >= 0.72 or (caps and caps[0].confidence_score >= 0.82):
                 badges.append("Specialist")
 
+            top_similarity = max(top_similarity, candidate.similarity)
             result_rows.append(
                 BusinessSearchResult(
                     id=business.id,
@@ -191,23 +244,67 @@ class SearchService:
                     badges=badges,
                     matched_terms=sorted(candidate.matched_terms),
                     last_updated=business.last_updated,
+                    request_id=request_id,
                 )
             )
 
         result_rows.sort(key=lambda item: (item.distance_km, item.name.lower()))
+        return result_rows, top_similarity
+
+    def search(self, db: Session, params: SearchParams) -> SearchResponse:
+        clean_query = params.query.strip()
+        if not clean_query:
+            return self._empty_response(
+                query=params.query,
+                expansion_chain=[],
+                related_items=[],
+                params=params,
+            )
+
+        self._record_trace_query(clean_query)
+        request_id = self._current_request_id()
+
+        expansion_chain = self._expand_query(db, clean_query)
+        query_terms = [clean_query]
+        seen_terms = {clean_query.lower()}
+        for term in expansion_chain:
+            lowered = term.lower()
+            if lowered not in seen_terms:
+                seen_terms.add(lowered)
+                query_terms.append(term)
+
+        vectors = self._encode_terms(query_terms)
+        candidate_map = self._collect_candidates(db, params, query_terms, vectors)
+        related_items = self._related_items(db, clean_query)
+
+        if not candidate_map:
+            empty_ranked_rows, top_similarity = self._rank_candidates({}, {}, params, request_id)
+            self._record_trace_results(len(empty_ranked_rows), top_similarity)
+            return SearchResponse(
+                query=clean_query,
+                expansion_chain=expansion_chain,
+                related_items=related_items,
+                local_only=not params.include_chains,
+                filters=self._filters_payload(params),
+                results=empty_ranked_rows,
+                request_id=request_id,
+            )
+
+        business_ids = list(candidate_map.keys())
+        capabilities_map = self._fetch_capabilities_map(db, business_ids)
+        _ = self._fetch_sources_map(db, business_ids)
+        result_rows, top_similarity = self._rank_candidates(candidate_map, capabilities_map, params, request_id)
+        limited_results = result_rows[: params.limit]
+        self._record_trace_results(len(limited_results), top_similarity if limited_results else 0.0)
 
         return SearchResponse(
             query=clean_query,
             expansion_chain=expansion_chain,
-            related_items=ontology_service.related_items(db, clean_query),
+            related_items=related_items,
             local_only=not params.include_chains,
-            filters={
-                "include_chains": params.include_chains,
-                "open_now": params.open_now,
-                "walking_distance": params.walking_distance,
-                "walking_threshold_minutes": params.walking_threshold_minutes,
-            },
-            results=result_rows[: params.limit],
+            filters=self._filters_payload(params),
+            results=limited_results,
+            request_id=request_id,
         )
 
     def business_capabilities(self, db: Session, business_id: int, limit: int = 8) -> CapabilitiesResponse:
