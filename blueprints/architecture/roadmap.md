@@ -184,10 +184,9 @@ Embedding generation should not block search.
 
 ## Upgrade
 
-Create background job system to:
-
-- Regenerate embeddings when business data changes
-- Update vector store asynchronously
+1. Create background job system t
+2. Regenerate embeddings when business data changes
+3. Update vector store asynchronously
 
 ## Outcome
 
