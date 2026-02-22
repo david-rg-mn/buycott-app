@@ -10,7 +10,8 @@ const String defaultApiBaseUrl = String.fromEnvironment(
 );
 
 class BuycottApiService {
-  BuycottApiService({String? baseUrl}) : _baseUrl = baseUrl ?? defaultApiBaseUrl;
+  BuycottApiService({String? baseUrl})
+      : _baseUrl = baseUrl ?? defaultApiBaseUrl;
 
   final String _baseUrl;
 
@@ -76,6 +77,34 @@ class BuycottApiService {
     return SearchPayload.fromJson(json, performance: performance);
   }
 
+  Future<SearchPayload> businesses({
+    required double lat,
+    required double lng,
+    required bool includeChains,
+    required bool openNow,
+    required bool walkingDistance,
+    int walkingThresholdMinutes = 15,
+    int limit = 1000,
+  }) async {
+    final uri = _buildUri('/api/businesses', {
+      'lat': lat.toString(),
+      'lng': lng.toString(),
+      'include_chains': includeChains.toString(),
+      'open_now': openNow.toString(),
+      'walking_distance': walkingDistance.toString(),
+      'walking_threshold_minutes': walkingThresholdMinutes.toString(),
+      'limit': limit.toString(),
+    });
+
+    final response = await http.get(uri);
+    if (response.statusCode >= 400) {
+      throw Exception('API error ${response.statusCode}: ${response.body}');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final performance = _parsePerformanceHeader(response);
+    return SearchPayload.fromJson(json, performance: performance);
+  }
+
   Future<List<String>> suggestions(String partial, {int limit = 8}) async {
     final uri = _buildUri('/api/search_suggestions', {
       'q': partial,
@@ -86,7 +115,8 @@ class BuycottApiService {
     return (json['suggestions'] as List<dynamic>? ?? []).cast<String>();
   }
 
-  Future<CapabilityPayload> capabilities(int businessId, {int limit = 8}) async {
+  Future<CapabilityPayload> capabilities(int businessId,
+      {int limit = 8}) async {
     final uri = _buildUri('/api/business_capabilities/$businessId', {
       'limit': limit.toString(),
     });

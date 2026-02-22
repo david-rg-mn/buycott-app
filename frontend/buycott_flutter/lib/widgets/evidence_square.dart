@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../design_system.dart';
+
 class EvidenceSquare extends StatelessWidget {
   const EvidenceSquare({
     super.key,
@@ -14,45 +16,53 @@ class EvidenceSquare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = context.buycottTokens;
+    final textTheme = Theme.of(context).textTheme;
+
+    final accentColor = highlight
+        ? BuycottColors.accentPrimary
+        : tokens.colorForConfidence(evidence);
+
     return Container(
-      width: 64,
-      height: 64,
+      width: Dimensions.x8,
+      height: Dimensions.x8,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(10),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF0F766E), Color(0xFF0E7490), Color(0xFF0284C7)],
-        ),
-        border: Border.all(
-          color: highlight ? const Color(0xFFF59E0B) : Colors.white,
-          width: 2,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: highlight ? const Color(0x66F59E0B) : const Color(0x33000000),
-            blurRadius: 10,
-            spreadRadius: highlight ? 2 : 0,
-          ),
-        ],
+        color: BuycottColors.bgSurface,
+        borderRadius: BorderRadius.circular(tokens.radiusMd),
+        border: Border.all(color: BuycottColors.border),
+        boxShadow: tokens.elevationCard,
       ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '${minutes}m',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
+        children: <Widget>[
+          Container(
+            height: Dimensions.x1,
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(tokens.radiusMd),
+                topRight: Radius.circular(tokens.radiusMd),
+              ),
             ),
           ),
-          Text(
-            '$evidence',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  '${minutes}m',
+                  style: BuycottTypography.numeric(
+                    textTheme.bodyLarge!,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '$evidence',
+                  style: BuycottTypography.numeric(
+                    textTheme.bodySmall!,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

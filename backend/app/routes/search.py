@@ -72,6 +72,34 @@ def search(
     return search_service.search(db, params)
 
 
+@router.get("/businesses", response_model=SearchResponse)
+def businesses(
+    request: Request,
+    location: str | None = Query(default=None),
+    lat: float | None = Query(default=None),
+    lng: float | None = Query(default=None),
+    include_chains: bool = Query(default=False),
+    open_now: bool = Query(default=False),
+    walking_distance: bool = Query(default=False),
+    walking_threshold_minutes: int = Query(default=15, ge=1, le=60),
+    limit: int = Query(default=1000, ge=1, le=2000),
+    db: Session = Depends(get_db),
+) -> SearchResponse:
+    _assert_forbidden_params_absent(request)
+    resolved_lat, resolved_lng = _resolve_coordinates(location, lat, lng)
+    params = SearchParams(
+        query="all businesses",
+        lat=resolved_lat,
+        lng=resolved_lng,
+        include_chains=include_chains,
+        open_now=open_now,
+        walking_distance=walking_distance,
+        walking_threshold_minutes=walking_threshold_minutes,
+        limit=limit,
+    )
+    return search_service.list_businesses(db, params)
+
+
 @router.get("/search_suggestions", response_model=SuggestionsResponse)
 def search_suggestions(
     q: str = Query(..., min_length=1),

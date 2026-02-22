@@ -314,6 +314,84 @@ class SearchService:
             request_id=request_id,
         )
 
+    def list_businesses(self, db: Session, params: SearchParams) -> SearchResponse:
+        request_id = self._current_request_id()
+
+        stmt = select(Business)
+        if not params.include_chains:
+            stmt = stmt.where(Business.is_chain.is_(False))
+        businesses = db.execute(stmt).scalars().all()
+
+        business_ids = [business.id for business in businesses]
+        capabilities_map = self._fetch_capabilities_map(db, business_ids)
+        _ = self._fetch_sources_map(db, business_ids)
+
+        result_rows: list[BusinessSearchResult] = []
+        for business in businesses:
+            distance_km = haversine_km(params.lat, params.lng, business.lat, business.lng)
+            walking_minutes, driving_minutes, fastest_minutes = compute_travel_minutes(distance_km)
+
+            if params.walking_distance and walking_minutes > params.walking_threshold_minutes:
+                continue
+
+            open_flag = is_open_now(business.hours_json, business.timezone)
+            if params.open_now and not open_flag:
+                continue
+
+            raw_types = business.types if isinstance(business.types, list) else []
+            place_types = [item for item in raw_types if isinstance(item, str)]
+            hours_payload = business.hours if isinstance(business.hours, dict) else None
+
+            caps = capabilities_map.get(business.id, [])
+            top_capability_confidence = max((cap.confidence_score for cap in caps), default=0.0)
+            evidence_score = _clamp_score(max(float(business.specialty_score), float(top_capability_confidence)))
+
+            badges: list[str] = []
+            if not business.is_chain:
+                badges.append("Independent")
+            if business.specialty_score >= 0.72 or (caps and caps[0].confidence_score >= 0.82):
+                badges.append("Specialist")
+
+            result_rows.append(
+                BusinessSearchResult(
+                    id=business.id,
+                    name=business.name,
+                    lat=business.lat,
+                    lng=business.lng,
+                    distance_km=round(distance_km, 2),
+                    minutes_away=fastest_minutes,
+                    driving_minutes=driving_minutes,
+                    walking_minutes=walking_minutes,
+                    evidence_score=evidence_score,
+                    is_chain=business.is_chain,
+                    chain_name=business.chain_name,
+                    formatted_address=business.formatted_address,
+                    phone=business.phone,
+                    website=business.website,
+                    hours=hours_payload,
+                    types=place_types,
+                    open_now=open_flag,
+                    badges=badges,
+                    matched_terms=[],
+                    last_updated=business.last_updated,
+                    request_id=request_id,
+                )
+            )
+
+        result_rows.sort(key=lambda item: (item.distance_km, item.name.lower()))
+        limited_results = result_rows[: params.limit]
+        self._record_trace_results(len(limited_results), None)
+
+        return SearchResponse(
+            query="all businesses",
+            expansion_chain=[],
+            related_items=[],
+            local_only=not params.include_chains,
+            filters=self._filters_payload(params),
+            results=limited_results,
+            request_id=request_id,
+        )
+
     def business_capabilities(self, db: Session, business_id: int, limit: int = 8) -> CapabilitiesResponse:
         stmt = (
             select(BusinessCapability)
