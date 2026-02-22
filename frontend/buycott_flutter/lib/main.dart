@@ -183,6 +183,9 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (context) {
+        final hasPhone = (result.phone ?? '').trim().isNotEmpty;
+        final hasWebsite = (result.website ?? '').trim().isNotEmpty;
+        final hasHours = result.hours != null;
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
@@ -234,6 +237,10 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                   ),
                   const SizedBox(height: 6),
                   Text('${result.distanceKm.toStringAsFixed(1)} km away'),
+                  if ((result.formattedAddress ?? '').trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(result.formattedAddress!),
+                  ],
                   const SizedBox(height: 4),
                   Text('Time-to-possession: ${result.minutesAway}m'),
                   const SizedBox(height: 4),
@@ -256,18 +263,21 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                         icon: const Icon(Icons.directions),
                         label: const Text('Directions'),
                       ),
-                      if (result.phone != null)
-                        FilledButton.tonalIcon(
-                          onPressed: () => _launchUrl('tel:${result.phone}'),
-                          icon: const Icon(Icons.call),
-                          label: const Text('Call'),
-                        ),
-                      if (result.website != null)
-                        FilledButton.tonalIcon(
-                          onPressed: () => _launchUrl(result.website!),
-                          icon: const Icon(Icons.language),
-                          label: const Text('Website'),
-                        ),
+                      FilledButton.tonalIcon(
+                        onPressed: hasPhone ? () => _launchUrl('tel:${result.phone}') : null,
+                        icon: const Icon(Icons.call),
+                        label: const Text('Call'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: hasWebsite ? () => _launchUrl(result.website!) : null,
+                        icon: const Icon(Icons.language),
+                        label: const Text('Website'),
+                      ),
+                      FilledButton.tonalIcon(
+                        onPressed: hasHours ? () => _showHoursSheet(result) : null,
+                        icon: const Icon(Icons.schedule),
+                        label: const Text('Hours'),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -442,6 +452,50 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
     final url =
         'https://www.google.com/maps/dir/?api=1&destination=${result.lat},${result.lng}&travelmode=driving';
     await _launchUrl(url);
+  }
+
+  Future<void> _showHoursSheet(SearchResult result) async {
+    final hours = result.hours;
+    if (hours == null) {
+      return;
+    }
+
+    final rawWeekdays = hours['weekdayDescriptions'];
+    final weekdayLines = (rawWeekdays is List)
+        ? rawWeekdays.whereType<String>().where((line) => line.trim().isNotEmpty).toList()
+        : <String>[];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Business hours',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                if (weekdayLines.isEmpty)
+                  const Text('Hours available but weekday detail is not provided.')
+                else
+                  ...weekdayLines.map(
+                    (line) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Text(line),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _launchUrl(String rawUrl) async {

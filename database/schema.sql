@@ -10,14 +10,34 @@ CREATE TABLE IF NOT EXISTS businesses (
   text_content TEXT NOT NULL,
   is_chain BOOLEAN NOT NULL DEFAULT FALSE,
   chain_name TEXT,
+  google_place_id TEXT UNIQUE,
+  formatted_address TEXT,
+  latitude DOUBLE PRECISION,
+  longitude DOUBLE PRECISION,
   phone TEXT,
   website TEXT,
+  hours JSONB,
   hours_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  types JSONB,
+  google_last_fetched_at TIMESTAMP,
+  google_source TEXT NOT NULL DEFAULT 'places_api',
   timezone TEXT NOT NULL DEFAULT 'America/Chicago',
   specialty_score REAL NOT NULL DEFAULT 0,
   last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_place_id TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS formatted_address TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS hours JSONB;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS types JSONB;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_last_fetched_at TIMESTAMP;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_source TEXT DEFAULT 'places_api';
+ALTER TABLE businesses ALTER COLUMN google_source SET DEFAULT 'places_api';
+UPDATE businesses SET google_source = 'places_api' WHERE google_source IS NULL;
+ALTER TABLE businesses ALTER COLUMN google_source SET NOT NULL;
 
 CREATE TABLE IF NOT EXISTS business_sources (
   id BIGSERIAL PRIMARY KEY,
@@ -66,14 +86,26 @@ CREATE TABLE IF NOT EXISTS telemetry_logs (
   timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS google_api_usage_log (
+  id BIGSERIAL PRIMARY KEY,
+  timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  requests_made INTEGER NOT NULL CHECK (requests_made >= 0),
+  estimated_cost DOUBLE PRECISION NOT NULL CHECK (estimated_cost >= 0)
+);
+
 CREATE INDEX IF NOT EXISTS idx_businesses_lat_lng ON businesses(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_businesses_is_chain ON businesses(is_chain);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_google_place_id_unique
+  ON businesses(google_place_id)
+  WHERE google_place_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_businesses_google_last_fetched_at ON businesses(google_last_fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_business_sources_business_id ON business_sources(business_id);
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_parent_term ON ontology_terms(parent_term);
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_term_trgm ON ontology_terms USING GIN (term gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_business_id ON business_capabilities(business_id);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_term ON business_capabilities(ontology_term);
 CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_google_api_usage_log_timestamp ON google_api_usage_log(timestamp DESC);
 
 DO $$
 BEGIN

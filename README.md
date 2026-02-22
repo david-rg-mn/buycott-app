@@ -2,11 +2,11 @@
 
 Buycott is a semantic, map-first civic discovery app for finding where an item can likely be obtained nearby.
 
-This repository now contains a working Phase 0-2 vertical slice implementation:
+This repository now contains a working Phase 0-3 vertical slice implementation:
 
 - `FastAPI` backend API
 - `PostgreSQL + pgvector` schema
-- OpenClaw-style extraction + embedding + capability mapping pipeline
+- Google Places ingestion + embedding + capability mapping pipeline
 - Ontology expansion and semantic vector search
 - Flutter map-first client with evidence/explainability features
 
@@ -52,10 +52,10 @@ Key invariant enforcement:
 docker compose up --build -d
 ```
 
-### 2. Run pipeline (seed + embeddings + capabilities)
+### 2. Run pipeline (Google seed + embeddings + capabilities)
 
 ```bash
-python3 pipeline/run_full_pipeline.py
+python3 pipeline/run_full_pipeline.py --seed-google
 ```
 
 `run_full_pipeline.py` defaults to `--mode auto`:
@@ -66,8 +66,10 @@ python3 pipeline/run_full_pipeline.py
 If you need to re-apply schema first:
 
 ```bash
-python3 pipeline/run_full_pipeline.py --with-schema
+python3 pipeline/run_full_pipeline.py --with-schema --seed-google
 ```
+
+Before running Google ingestion, set `GOOGLE_MAPS_API_KEY` in `.env`.
 
 ### 3. Verify backend
 
@@ -143,12 +145,12 @@ All `/api/*` responses now include:
 
 - `python3 pipeline/init_db.py`
 - `python3 pipeline/load_ontology.py`
-- `python3 pipeline/openclaw_extract.py`
+- `python3 pipeline/google_places_seed.py`
 - `python3 pipeline/build_embeddings.py`
 - `python3 pipeline/rebuild_capabilities.py`
-- `python3 pipeline/run_full_pipeline.py`
+- `python3 pipeline/run_full_pipeline.py --seed-google`
 - `python3 pipeline/run_full_pipeline.py --mode local`
-- `python3 pipeline/run_full_pipeline.py --mode docker`
+- `python3 pipeline/run_full_pipeline.py --mode docker --seed-google`
 
 ## Testing
 

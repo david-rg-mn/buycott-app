@@ -36,10 +36,13 @@ class SearchResult {
     required this.openNow,
     required this.badges,
     required this.matchedTerms,
+    required this.types,
     required this.lastUpdated,
     this.chainName,
+    this.formattedAddress,
     this.phone,
     this.website,
+    this.hours,
     this.requestId,
   });
 
@@ -56,10 +59,13 @@ class SearchResult {
   final bool openNow;
   final List<String> badges;
   final List<String> matchedTerms;
+  final List<String> types;
   final DateTime lastUpdated;
   final String? chainName;
+  final String? formattedAddress;
   final String? phone;
   final String? website;
+  final Map<String, dynamic>? hours;
   final String? requestId;
 
   factory SearchResult.fromJson(Map<String, dynamic> json, {String? requestId}) {
@@ -77,10 +83,15 @@ class SearchResult {
       openNow: json['open_now'] as bool,
       badges: (json['badges'] as List<dynamic>? ?? []).cast<String>(),
       matchedTerms: (json['matched_terms'] as List<dynamic>? ?? []).cast<String>(),
+      types: (json['types'] as List<dynamic>? ?? []).map((item) => item.toString()).toList(),
       lastUpdated: DateTime.parse(json['last_updated'] as String),
       chainName: json['chain_name'] as String?,
+      formattedAddress: json['formatted_address'] as String?,
       phone: json['phone'] as String?,
       website: json['website'] as String?,
+      hours: json['hours'] is Map
+          ? Map<String, dynamic>.from(json['hours'] as Map<dynamic, dynamic>)
+          : null,
       requestId: json['request_id'] as String? ?? requestId,
     );
   }

@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,9 +34,22 @@ class Business(Base):
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
     is_chain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     chain_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    google_place_id: Mapped[str | None] = mapped_column(Text, nullable=True, unique=True)
+    formatted_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
     website: Mapped[str | None] = mapped_column(Text, nullable=True)
+    hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     hours_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    types: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    google_last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    google_source: Mapped[str] = mapped_column(
+        String(64),
+        nullable=False,
+        default="places_api",
+        server_default=text("'places_api'"),
+    )
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Chicago")
     specialty_score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
@@ -122,3 +136,12 @@ class TelemetryLog(Base):
     result_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     top_similarity_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default=func.now())
+
+
+class GoogleApiUsageLog(Base):
+    __tablename__ = "google_api_usage_log"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False, server_default=func.now())
+    requests_made: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)

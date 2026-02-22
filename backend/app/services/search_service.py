@@ -216,6 +216,10 @@ class SearchService:
             if params.open_now and not open_flag:
                 continue
 
+            raw_types = business.types if isinstance(business.types, list) else []
+            place_types = [item for item in raw_types if isinstance(item, str)]
+            hours_payload = business.hours if isinstance(business.hours, dict) else None
+
             badges: list[str] = []
             if not business.is_chain:
                 badges.append("Independent")
@@ -238,8 +242,11 @@ class SearchService:
                     evidence_score=_clamp_score(candidate.similarity),
                     is_chain=business.is_chain,
                     chain_name=business.chain_name,
+                    formatted_address=business.formatted_address,
                     phone=business.phone,
                     website=business.website,
+                    hours=hours_payload,
+                    types=place_types,
                     open_now=open_flag,
                     badges=badges,
                     matched_terms=sorted(candidate.matched_terms),

@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -28,8 +29,11 @@ class BusinessSearchResult(BaseModel):
     evidence_score: int = Field(ge=0, le=100)
     is_chain: bool
     chain_name: str | None = None
+    formatted_address: str | None = None
     phone: str | None = None
     website: str | None = None
+    hours: dict[str, Any] | None = None
+    types: list[str] = Field(default_factory=list)
     open_now: bool
     badges: list[str]
     matched_terms: list[str]

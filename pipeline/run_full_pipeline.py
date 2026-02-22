@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCAL_REQUIRED_MODULES = ("sqlalchemy", "numpy", "psycopg", "pgvector")
+LOCAL_REQUIRED_MODULES = ("sqlalchemy", "numpy", "psycopg", "pgvector", "httpx")
 DOCKER_PIPELINE_ROOT = "/workspace/pipeline"
 
 
@@ -84,8 +84,13 @@ def _run(script_name: str, mode: str) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run Buycott extraction + embedding + capability pipeline")
+    parser = argparse.ArgumentParser(description="Run Buycott Google Places + embedding + capability pipeline")
     parser.add_argument("--with-schema", action="store_true", help="Apply database/schema.sql before loading data")
+    parser.add_argument(
+        "--seed-google",
+        action="store_true",
+        help="Run Google Places ingestion for Powderhorn before embeddings",
+    )
     parser.add_argument(
         "--mode",
         choices=("auto", "local", "docker"),
@@ -103,8 +108,8 @@ def main() -> None:
     if args.with_schema:
         _run("init_db.py", mode)
 
-    _run("load_ontology.py", mode)
-    _run("openclaw_extract.py", mode)
+    if args.seed_google:
+        _run("google_places_seed.py", mode)
     _run("build_embeddings.py", mode)
     _run("rebuild_capabilities.py", mode)
     print("Pipeline completed")
