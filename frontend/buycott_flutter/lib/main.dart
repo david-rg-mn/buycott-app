@@ -60,6 +60,24 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
   List<SearchResult> _results = const <SearchResult>[];
   List<String> _suggestions = const <String>[];
 
+  SearchResult? _highestProbabilityMatch(List<SearchResult> results) {
+    if (results.isEmpty) {
+      return null;
+    }
+    return results.reduce((best, candidate) {
+      if (candidate.evidenceScore != best.evidenceScore) {
+        return candidate.evidenceScore > best.evidenceScore ? candidate : best;
+      }
+      if (candidate.minutesAway != best.minutesAway) {
+        return candidate.minutesAway < best.minutesAway ? candidate : best;
+      }
+      if (candidate.distanceKm != best.distanceKm) {
+        return candidate.distanceKm < best.distanceKm ? candidate : best;
+      }
+      return candidate.name.compareTo(best.name) < 0 ? candidate : best;
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -142,9 +160,9 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
         _loading = false;
       });
 
-      if (_results.isNotEmpty) {
-        final first = _results.first;
-        _mapController.move(LatLng(first.lat, first.lng), 14);
+      final bestMatch = _highestProbabilityMatch(payload.results);
+      if (bestMatch != null) {
+        _mapController.move(LatLng(bestMatch.lat, bestMatch.lng), 14);
       }
     } catch (error) {
       if (!mounted) {
@@ -182,7 +200,7 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
   }
 
   Future<void> _openBusinessSheet(SearchResult result) async {
-    final capsFuture = _api.capabilities(result.id);
+    final capsFuture = _api.capabilities(result.id, limit: 30);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -391,20 +409,89 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
 
                       final capabilities =
                           snapshot.data?.capabilities ?? const <Capability>[];
+                      final allOpenClawTerms = capabilities
+                          .map((capability) => capability.ontologyTerm.trim())
+                          .where((term) => term.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort();
+
                       if (capabilities.isEmpty) {
                         return Text('No inferred capabilities yet.',
                             style: textTheme.bodyMedium);
                       }
 
-                      return Wrap(
-                        spacing: Dimensions.x1,
-                        runSpacing: Dimensions.x1,
-                        children: capabilities.map((capability) {
-                          return Chip(
-                            label: Text(capability.ontologyTerm),
-                            backgroundColor: BuycottColors.bgPrimary,
-                          );
-                        }).toList(),
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Wrap(
+                            spacing: Dimensions.x1,
+                            runSpacing: Dimensions.x1,
+                            children: capabilities.take(8).map((capability) {
+                              return Chip(
+                                label: Text(capability.ontologyTerm),
+                                backgroundColor: BuycottColors.bgPrimary,
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: Dimensions.x2),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: BuycottColors.bgPrimary,
+                              borderRadius:
+                                  BorderRadius.circular(tokens.radiusMd),
+                              border: Border.all(color: BuycottColors.border),
+                            ),
+                            child: Theme(
+                              data: Theme.of(context).copyWith(
+                                dividerColor: BuycottColors.bgPrimary,
+                              ),
+                              child: ExpansionTile(
+                                tilePadding: const EdgeInsets.symmetric(
+                                  horizontal: Dimensions.x2,
+                                ),
+                                childrenPadding: const EdgeInsets.fromLTRB(
+                                  Dimensions.x2,
+                                  0,
+                                  Dimensions.x2,
+                                  Dimensions.x2,
+                                ),
+                                iconColor: BuycottColors.accentPrimary,
+                                collapsedIconColor: BuycottColors.textSecondary,
+                                title: Text(
+                                  'OpenClaw terms',
+                                  style: textTheme.bodyMedium
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                subtitle: Text(
+                                  'Expand to view all ${allOpenClawTerms.length} terms',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: BuycottColors.textSecondary,
+                                  ),
+                                ),
+                                children: <Widget>[
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Wrap(
+                                      spacing: Dimensions.x1,
+                                      runSpacing: Dimensions.x1,
+                                      children: allOpenClawTerms.map((term) {
+                                        return Chip(
+                                          label: Text(term),
+                                          backgroundColor: BuycottColors
+                                              .accentDim
+                                              .withValues(
+                                            alpha: tokens.hoverOverlayOpacity,
+                                          ),
+                                        );
+                                      }).toList(),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),

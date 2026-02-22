@@ -2,11 +2,12 @@
 
 Buycott is a semantic, map-first civic discovery app for finding where an item can likely be obtained nearby.
 
-This repository now contains a working Phase 0-3 vertical slice implementation:
+This repository now contains a working Phase 0-5 vertical slice implementation:
 
 - `FastAPI` backend API
 - `PostgreSQL + pgvector` schema
 - Google Places ingestion + embedding + capability mapping pipeline
+- OpenClaw Phase 5 multi-agent router/scraper/inference pipeline for menu and business signals
 - Ontology expansion and semantic vector search
 - Flutter map-first client with evidence/explainability features
 
@@ -52,7 +53,7 @@ Key invariant enforcement:
 docker compose up --build -d
 ```
 
-### 2. Run pipeline (Google seed + embeddings + capabilities)
+### 2. Run baseline pipeline (Google seed + embeddings + capabilities)
 
 ```bash
 python3 pipeline/run_full_pipeline.py --seed-google
@@ -70,6 +71,24 @@ python3 pipeline/run_full_pipeline.py --with-schema --seed-google
 ```
 
 Before running Google ingestion, set `GOOGLE_MAPS_API_KEY` in `.env`.
+
+### 2b. Run Phase 5 OpenClaw enrichment (router + subagents + normalization)
+
+```bash
+python3 pipeline/run_full_pipeline.py --seed-google --phase5-openclaw
+```
+
+This executes:
+- Router master modality detection (`html`, `spa`, `pdf`, `image`, `api`, `social`)
+- `sessions.spawn`-style scraper fanout
+- Layer 2 ontology normalization and canonical capability assembly
+- Per-item + final business embedding updates for pgvector cosine search
+
+By default, Phase 5 enforces Docker sandbox execution. For explicit local override:
+
+```bash
+python3 pipeline/phase5_openclaw_pipeline.py --allow-host-execution --limit 5
+```
 
 ### 3. Verify backend
 
@@ -146,11 +165,17 @@ All `/api/*` responses now include:
 - `python3 pipeline/init_db.py`
 - `python3 pipeline/load_ontology.py`
 - `python3 pipeline/google_places_seed.py`
+- `python3 pipeline/phase5_openclaw_pipeline.py`
 - `python3 pipeline/build_embeddings.py`
 - `python3 pipeline/rebuild_capabilities.py`
 - `python3 pipeline/run_full_pipeline.py --seed-google`
+- `python3 pipeline/run_full_pipeline.py --seed-google --phase5-openclaw`
 - `python3 pipeline/run_full_pipeline.py --mode local`
 - `python3 pipeline/run_full_pipeline.py --mode docker --seed-google`
+
+Sub-agent manual spawn entrypoint:
+
+- `./subagents spawn html-scraper --source-url https://example.com/menu --source-type website --allow-host-execution`
 
 ## Testing
 

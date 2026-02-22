@@ -11,6 +11,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -52,6 +53,7 @@ class Business(Base):
     )
     timezone: Mapped[str] = mapped_column(String(64), nullable=False, default="America/Chicago")
     specialty_score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    canonical_summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -61,6 +63,26 @@ class Business(Base):
         passive_deletes=True,
     )
     capabilities: Mapped[list["BusinessCapability"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    source_documents: Mapped[list["SourceDocument"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    evidence_packets: Mapped[list["EvidencePacket"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    menu_items: Mapped[list["MenuItem"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    capability_profiles: Mapped[list["CapabilityProfile"]] = relationship(
         back_populates="business",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -83,6 +105,134 @@ class BusinessSource(Base):
     last_fetched: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     business: Mapped[Business] = relationship(back_populates="sources")
+
+
+class SourceDocument(Base):
+    __tablename__ = "source_documents"
+    __table_args__ = (UniqueConstraint("business_id", "source_url", "content_hash", name="uq_source_document"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    modality: Mapped[str] = mapped_column(String(32), nullable=False)
+    etag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="source_documents")
+
+
+class EvidencePacket(Base):
+    __tablename__ = "evidence_packets"
+    __table_args__ = (
+        UniqueConstraint("business_id", "claim_hash", "source_url", name="uq_evidence_packet_claim"),
+        CheckConstraint("extraction_confidence >= 0 AND extraction_confidence <= 1", name="ck_evidence_extraction"),
+        CheckConstraint("credibility_score >= 0 AND credibility_score <= 100", name="ck_evidence_credibility"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    modality: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    sanitized_claim_text: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    extraction_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    credibility_score: Mapped[float] = mapped_column(Float, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
+    content_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="evidence_packets")
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+    __table_args__ = (
+        UniqueConstraint("business_id", "claim_hash", name="uq_menu_item_claim"),
+        CheckConstraint("extraction_confidence >= 0 AND extraction_confidence <= 1", name="ck_menu_extraction"),
+        CheckConstraint("credibility_score >= 0 AND credibility_score <= 100", name="ck_menu_credibility"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    source_snippet: Mapped[str] = mapped_column(Text, nullable=False)
+    section: Mapped[str | None] = mapped_column(Text, nullable=True)
+    item_name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="USD")
+    dietary_tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    extraction_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    credibility_score: Mapped[float] = mapped_column(Float, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="menu_items")
+
+
+class CapabilityProfile(Base):
+    __tablename__ = "capabilities"
+    __table_args__ = (
+        UniqueConstraint("business_id", "capability_type", "canonical_text", name="uq_capability_profile"),
+        CheckConstraint("confidence_score >= 0 AND confidence_score <= 1", name="ck_capability_profile_confidence"),
+        CheckConstraint("evidence_score >= 0 AND evidence_score <= 100", name="ck_capability_profile_evidence"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    capability_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    canonical_items: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    source_claim_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=list)
+    confidence_score: Mapped[float] = mapped_column(Float, nullable=False)
+    evidence_score: Mapped[float] = mapped_column(Float, nullable=False)
+    canonical_text: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="capability_profiles")
+
+
+class OntologyNode(Base):
+    __tablename__ = "ontology_nodes"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    canonical_term: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    parent_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("ontology_nodes.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    synonyms: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    source: Mapped[str] = mapped_column(String(128), nullable=False, default="seed")
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(384), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
 class OntologyTerm(Base):

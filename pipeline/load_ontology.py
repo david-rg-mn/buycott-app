@@ -44,7 +44,7 @@ def main() -> None:
     if str(backend_path) not in sys.path:
         sys.path.insert(0, str(backend_path))
 
-    from app.models import OntologyTerm
+    from app.models import OntologyNode, OntologyTerm
 
     payload: list[dict[str, str | None]] = load_json(RAW_DIR / "ontology_terms.json")
     depth_map = _compute_depth_map(payload)
@@ -73,8 +73,47 @@ def main() -> None:
                 existing.depth = depth
                 existing.source = "seed"
 
+        node_map: dict[str, OntologyNode] = {}
+        for item in payload:
+            term = str(item["term"]).strip()
+            canonical = _normalize(term)
+            node_stmt = select(OntologyNode).where(func.lower(OntologyNode.canonical_term) == canonical)
+            node = session.execute(node_stmt).scalar_one_or_none()
+            synonyms = sorted({canonical, term.strip()})
+
+            if node is None:
+                node = OntologyNode(
+                    canonical_term=canonical,
+                    synonyms=synonyms,
+                    source="seed",
+                )
+                session.add(node)
+                session.flush()
+            else:
+                existing_synonyms = node.synonyms if isinstance(node.synonyms, list) else []
+                normalized_existing = {str(value) for value in existing_synonyms if isinstance(value, str)}
+                for synonym in synonyms:
+                    if synonym not in normalized_existing:
+                        existing_synonyms.append(synonym)
+                node.synonyms = existing_synonyms
+                node.source = "seed"
+                session.flush()
+            node_map[canonical] = node
+
+        for item in payload:
+            term = _normalize(str(item["term"]))
+            parent_term = item.get("parent_term")
+            node = node_map.get(term)
+            if node is None:
+                continue
+            if parent_term is None:
+                node.parent_id = None
+                continue
+            parent_node = node_map.get(_normalize(parent_term))
+            node.parent_id = parent_node.id if parent_node else None
+
         session.commit()
-        print(f"Loaded ontology terms: {len(payload)}")
+        print(f"Loaded ontology terms and nodes: {len(payload)}")
     finally:
         session.close()
 

@@ -72,12 +72,22 @@ def _resolve_mode(mode: str) -> str:
     )
 
 
-def _run(script_name: str, mode: str) -> None:
+def _run(script_name: str, mode: str, extra_args: list[str] | None = None) -> None:
+    extra_args = extra_args or []
     if mode == "local":
         script_path = ROOT / "pipeline" / script_name
-        cmd = [sys.executable, str(script_path)]
+        cmd = [sys.executable, str(script_path), *extra_args]
     else:
-        cmd = ["docker", "compose", "exec", "-T", "api", "python", f"{DOCKER_PIPELINE_ROOT}/{script_name}"]
+        cmd = [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            "api",
+            "python",
+            f"{DOCKER_PIPELINE_ROOT}/{script_name}",
+            *extra_args,
+        ]
 
     print(f"Running ({mode}): {' '.join(cmd)}")
     subprocess.run(cmd, cwd=ROOT, check=True)
@@ -97,6 +107,28 @@ def main() -> None:
         default="auto",
         help="Execution mode: local Python env, Docker Compose API container, or auto-detect",
     )
+    parser.add_argument(
+        "--phase5-openclaw",
+        action="store_true",
+        help="Run Phase 5 OpenClaw multi-agent enrichment from Google place/business sources.",
+    )
+    parser.add_argument(
+        "--phase5-place-id",
+        action="append",
+        default=[],
+        help="Optional Google Place ID filter for Phase 5 (can be used multiple times).",
+    )
+    parser.add_argument(
+        "--phase5-limit",
+        type=int,
+        default=None,
+        help="Optional max businesses to process in Phase 5 when ids are not provided.",
+    )
+    parser.add_argument(
+        "--phase5-allow-host-execution",
+        action="store_true",
+        help="Override Docker sandbox enforcement for Phase 5 (not recommended).",
+    )
     args = parser.parse_args()
 
     try:
@@ -110,6 +142,15 @@ def main() -> None:
 
     if args.seed_google:
         _run("google_places_seed.py", mode)
+    if args.phase5_openclaw:
+        phase5_args: list[str] = []
+        for place_id in args.phase5_place_id:
+            phase5_args.extend(["--google-place-id", place_id])
+        if args.phase5_limit is not None:
+            phase5_args.extend(["--limit", str(args.phase5_limit)])
+        if args.phase5_allow_host_execution:
+            phase5_args.append("--allow-host-execution")
+        _run("phase5_openclaw_pipeline.py", mode, phase5_args)
     _run("build_embeddings.py", mode)
     _run("rebuild_capabilities.py", mode)
     print("Pipeline completed")

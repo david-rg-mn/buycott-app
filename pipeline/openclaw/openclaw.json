@@ -1,0 +1,51 @@
+{
+  "agents": {
+    "router-master": {
+      "subagents": {
+        "model": "gpt-5.2-codex"
+      }
+    },
+    "html-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "spa-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "pdf-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "ocr-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "api-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "social-scraper": {
+      "subagents": {
+        "model": "gpt-5.1-codex"
+      }
+    },
+    "inference-normalizer": {
+      "subagents": {
+        "model": "gpt-5.2-codex"
+      }
+    }
+  },
+  "skills": {
+    "load": {
+      "extraDirs": [
+        "/workspace/pipeline/openclaw/skills"
+      ]
+    }
+  }
+}

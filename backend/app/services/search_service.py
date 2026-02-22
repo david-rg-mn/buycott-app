@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..models import Business, BusinessCapability, BusinessSource
+from ..models import Business, BusinessCapability, BusinessSource, CapabilityProfile, MenuItem
 from ..schemas import (
     BusinessSearchResult,
     CapabilitiesResponse,
@@ -393,13 +393,101 @@ class SearchService:
         )
 
     def business_capabilities(self, db: Session, business_id: int, limit: int = 8) -> CapabilitiesResponse:
-        stmt = (
+        cap_limit = max(1, int(limit))
+        response_terms: list[CapabilityView] = []
+
+        def _clean_term(raw: str) -> str:
+            text = " ".join(raw.strip().split())
+            if not text:
+                return ""
+            words = text.split()
+            if len(words) >= 4:
+                max_window = min(6, len(words) // 2)
+                for window in range(max_window, 0, -1):
+                    if words[:window] == words[window : 2 * window]:
+                        collapsed = " ".join(words[window:]).strip()
+                        if collapsed:
+                            text = collapsed
+                            break
+            return text
+
+        def _append_term(*, term: str, confidence: float, source_reference: str) -> None:
+            cleaned = _clean_term(term)
+            if not cleaned:
+                return
+            cleaned_norm = cleaned.lower()
+            if len(response_terms) >= cap_limit:
+                return
+            for idx, existing in enumerate(response_terms):
+                existing_norm = existing.ontology_term.lower()
+                if existing_norm == cleaned_norm:
+                    return
+                if existing_norm.endswith(f" {cleaned_norm}") and len(existing_norm) >= len(cleaned_norm) + 5:
+                    response_terms[idx] = CapabilityView(
+                        ontology_term=cleaned,
+                        confidence_score=round(float(confidence), 3),
+                        source_reference=source_reference,
+                    )
+                    return
+                if cleaned_norm.endswith(f" {existing_norm}") and len(cleaned_norm) >= len(existing_norm) + 5:
+                    return
+            response_terms.append(
+                CapabilityView(
+                    ontology_term=cleaned,
+                    confidence_score=round(float(confidence), 3),
+                    source_reference=source_reference,
+                )
+            )
+
+        menu_stmt = (
+            select(MenuItem)
+            .where(MenuItem.business_id == business_id)
+            .order_by(MenuItem.extraction_confidence.desc(), MenuItem.id.asc())
+        )
+        menu_items = db.execute(menu_stmt).scalars().all()
+        for item in menu_items:
+            _append_term(
+                term=str(item.item_name),
+                confidence=float(item.extraction_confidence),
+                source_reference="phase5:menu_item",
+            )
+            if len(response_terms) >= cap_limit:
+                break
+
+        profile_stmt = (
+            select(CapabilityProfile)
+            .where(CapabilityProfile.business_id == business_id)
+            .order_by(CapabilityProfile.confidence_score.desc(), CapabilityProfile.id.asc())
+        )
+        profiles = db.execute(profile_stmt).scalars().all()
+        for profile in profiles:
+            items = profile.canonical_items if isinstance(profile.canonical_items, list) else []
+            for raw_term in items:
+                if not isinstance(raw_term, str):
+                    continue
+                _append_term(
+                    term=raw_term,
+                    confidence=float(profile.confidence_score),
+                    source_reference=f"phase5:{profile.capability_type}",
+                )
+                if len(response_terms) >= cap_limit:
+                    break
+            if len(response_terms) >= cap_limit:
+                break
+
+        if response_terms:
+            return CapabilitiesResponse(
+                business_id=business_id,
+                capabilities=response_terms,
+            )
+
+        legacy_stmt = (
             select(BusinessCapability)
             .where(BusinessCapability.business_id == business_id)
             .order_by(BusinessCapability.confidence_score.desc())
-            .limit(limit)
+            .limit(cap_limit)
         )
-        capabilities = db.execute(stmt).scalars().all()
+        legacy_capabilities = db.execute(legacy_stmt).scalars().all()
         return CapabilitiesResponse(
             business_id=business_id,
             capabilities=[
@@ -408,7 +496,7 @@ class SearchService:
                     confidence_score=round(float(item.confidence_score), 3),
                     source_reference=item.source_reference,
                 )
-                for item in capabilities
+                for item in legacy_capabilities
             ],
         )
 

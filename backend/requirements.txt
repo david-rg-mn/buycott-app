@@ -8,4 +8,11 @@ numpy==2.3.2
 sentence-transformers==3.4.1
 python-dotenv==1.0.1
 httpx==0.28.1
+beautifulsoup4==4.13.4
+lxml==6.0.0
+playwright==1.54.0
+PyMuPDF==1.26.3
+pdfplumber==0.11.7
+Pillow==11.3.0
+pytesseract==0.3.13
 pytest==8.4.1

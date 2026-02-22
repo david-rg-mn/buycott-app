@@ -35,6 +35,7 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS hours JSONB;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS types JSONB;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_last_fetched_at TIMESTAMP;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_source TEXT DEFAULT 'places_api';
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS canonical_summary_text TEXT;
 ALTER TABLE businesses ALTER COLUMN google_source SET DEFAULT 'places_api';
 UPDATE businesses SET google_source = 'places_api' WHERE google_source IS NULL;
 ALTER TABLE businesses ALTER COLUMN google_source SET NOT NULL;
@@ -47,6 +48,86 @@ CREATE TABLE IF NOT EXISTS business_sources (
   snippet TEXT,
   last_fetched TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (business_id, source_type, source_url)
+);
+
+CREATE TABLE IF NOT EXISTS ontology_nodes (
+  id BIGSERIAL PRIMARY KEY,
+  canonical_term TEXT NOT NULL UNIQUE,
+  parent_id BIGINT REFERENCES ontology_nodes(id) ON DELETE SET NULL,
+  synonyms JSONB NOT NULL DEFAULT '[]'::jsonb,
+  source TEXT NOT NULL DEFAULT 'seed',
+  embedding VECTOR(384),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS source_documents (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  source_url TEXT NOT NULL,
+  modality TEXT NOT NULL,
+  etag TEXT,
+  content_hash TEXT NOT NULL,
+  http_status INTEGER,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, source_url, content_hash)
+);
+
+CREATE TABLE IF NOT EXISTS evidence_packets (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL,
+  modality TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_snippet TEXT NOT NULL,
+  claim_text TEXT NOT NULL,
+  sanitized_claim_text TEXT NOT NULL,
+  claim_hash TEXT NOT NULL,
+  extraction_confidence REAL NOT NULL CHECK (extraction_confidence >= 0 AND extraction_confidence <= 1),
+  credibility_score REAL NOT NULL CHECK (credibility_score >= 0 AND credibility_score <= 100),
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  content_hash TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, claim_hash, source_url)
+);
+
+CREATE TABLE IF NOT EXISTS menu_items (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  source_type TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  source_snippet TEXT NOT NULL,
+  section TEXT,
+  item_name TEXT NOT NULL,
+  description TEXT,
+  price NUMERIC(10, 2),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  dietary_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+  raw_text TEXT NOT NULL,
+  claim_hash TEXT NOT NULL,
+  extraction_confidence REAL NOT NULL CHECK (extraction_confidence >= 0 AND extraction_confidence <= 1),
+  credibility_score REAL NOT NULL CHECK (credibility_score >= 0 AND credibility_score <= 100),
+  embedding VECTOR(384),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, claim_hash)
+);
+
+CREATE TABLE IF NOT EXISTS capabilities (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  capability_type TEXT NOT NULL CHECK (
+    capability_type IN ('sells', 'services', 'attributes', 'operations', 'suitability')
+  ),
+  canonical_items JSONB NOT NULL DEFAULT '[]'::jsonb,
+  source_claim_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  confidence_score REAL NOT NULL CHECK (confidence_score >= 0 AND confidence_score <= 1),
+  evidence_score REAL NOT NULL CHECK (evidence_score >= 0 AND evidence_score <= 100),
+  canonical_text TEXT NOT NULL,
+  embedding VECTOR(384),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, capability_type, canonical_text)
 );
 
 CREATE TABLE IF NOT EXISTS ontology_terms (
@@ -100,6 +181,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_google_place_id_unique
   WHERE google_place_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_businesses_google_last_fetched_at ON businesses(google_last_fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_business_sources_business_id ON business_sources(business_id);
+CREATE INDEX IF NOT EXISTS idx_source_documents_business_id ON source_documents(business_id);
+CREATE INDEX IF NOT EXISTS idx_source_documents_source_url ON source_documents(source_url);
+CREATE INDEX IF NOT EXISTS idx_evidence_packets_business_id ON evidence_packets(business_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_packets_claim_hash ON evidence_packets(claim_hash);
+CREATE INDEX IF NOT EXISTS idx_menu_items_business_id ON menu_items(business_id);
+CREATE INDEX IF NOT EXISTS idx_menu_items_item_name_trgm ON menu_items USING GIN (item_name gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_capabilities_business_id ON capabilities(business_id);
+CREATE INDEX IF NOT EXISTS idx_capabilities_type ON capabilities(capability_type);
+CREATE INDEX IF NOT EXISTS idx_ontology_nodes_parent_id ON ontology_nodes(parent_id);
+CREATE INDEX IF NOT EXISTS idx_ontology_nodes_term_trgm ON ontology_nodes USING GIN (canonical_term gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_ontology_nodes_synonyms_gin ON ontology_nodes USING GIN (synonyms jsonb_path_ops);
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_parent_term ON ontology_terms(parent_term);
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_term_trgm ON ontology_terms USING GIN (term gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_business_id ON business_capabilities(business_id);
@@ -133,6 +225,54 @@ BEGIN
   ) THEN
     CREATE INDEX idx_ontology_terms_embedding_ivfflat
       ON ontology_terms
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 50);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_menu_items_embedding_ivfflat'
+  ) THEN
+    CREATE INDEX idx_menu_items_embedding_ivfflat
+      ON menu_items
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_capabilities_embedding_ivfflat'
+  ) THEN
+    CREATE INDEX idx_capabilities_embedding_ivfflat
+      ON capabilities
+      USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_ontology_nodes_embedding_ivfflat'
+  ) THEN
+    CREATE INDEX idx_ontology_nodes_embedding_ivfflat
+      ON ontology_nodes
       USING ivfflat (embedding vector_cosine_ops)
       WITH (lists = 50);
   END IF;
