@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     max_ontology_depth: int = 4
     top_k_per_vector: int = 40
     search_result_limit: int = 20
-    min_similarity: float = 0.15
+    min_similarity: float = 0.30
+    max_search_distance_km: float = 120.0
 
     walking_threshold_minutes: int = 15
     default_timezone: str = "America/Chicago"

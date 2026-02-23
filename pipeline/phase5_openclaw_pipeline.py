@@ -130,23 +130,37 @@ class Phase5Pipeline:
             completed.append((task, result))
         return completed
 
-    def _upsert_source_document(self, session: Any, SourceDocument: Any, *, business_id: int, result: Any) -> bool:
+    def _upsert_source_document(
+        self,
+        session: Any,
+        SourceDocument: Any,
+        *,
+        business_id: int,
+        result: Any,
+        seen_keys: set[tuple[int, str, str]],
+    ) -> bool:
         if not result.content_hash:
             return True
+        source_url = result.source.source_url
+        dedupe_key = (business_id, source_url, result.content_hash)
+        if dedupe_key in seen_keys:
+            self.stats.source_docs_skipped_duplicate += 1
+            return False
         stmt = select(SourceDocument).where(
             SourceDocument.business_id == business_id,
-            SourceDocument.source_url == result.source.source_url,
+            SourceDocument.source_url == source_url,
             SourceDocument.content_hash == result.content_hash,
         )
         existing = session.execute(stmt).scalar_one_or_none()
         if existing is not None:
             self.stats.source_docs_skipped_duplicate += 1
+            seen_keys.add(dedupe_key)
             return False
 
         session.add(
             SourceDocument(
                 business_id=business_id,
-                source_url=result.source.source_url,
+                source_url=source_url,
                 modality=result.modality,
                 etag=None,
                 content_hash=result.content_hash,
@@ -154,14 +168,26 @@ class Phase5Pipeline:
                 fetched_at=utcnow(),
             )
         )
+        seen_keys.add(dedupe_key)
         self.stats.source_docs_inserted += 1
         return True
 
-    def _write_evidence(self, session: Any, EvidencePacket: Any, *, business_id: int, result: Any) -> list[Any]:
+    def _write_evidence(
+        self,
+        session: Any,
+        EvidencePacket: Any,
+        *,
+        business_id: int,
+        result: Any,
+        seen_keys: set[tuple[int, str, str]],
+    ) -> list[Any]:
         created_rows: list[Any] = []
         for claim in result.claims:
             sanitized_claim = sanitize_public_text(claim.claim_text)
             claim_key = text_hash(f"{result.source.source_url}|{normalize_text(sanitized_claim)}")
+            dedupe_key = (business_id, result.source.source_url, claim_key)
+            if dedupe_key in seen_keys:
+                continue
 
             stmt = select(EvidencePacket).where(
                 EvidencePacket.business_id == business_id,
@@ -190,13 +216,23 @@ class Phase5Pipeline:
                 session.add(row)
                 created_rows.append(row)
                 self.stats.claims_written += 1
+                seen_keys.add(dedupe_key)
             else:
                 for key, value in payload.items():
                     setattr(existing, key, value)
                 created_rows.append(existing)
+                seen_keys.add(dedupe_key)
         return created_rows
 
-    def _write_menu_items(self, session: Any, MenuItem: Any, *, business_id: int, result: Any) -> list[Any]:
+    def _write_menu_items(
+        self,
+        session: Any,
+        MenuItem: Any,
+        *,
+        business_id: int,
+        result: Any,
+        seen_keys: set[tuple[int, str]],
+    ) -> list[Any]:
         written_rows: list[Any] = []
         for item in result.menu_items:
             sanitized_name = sanitize_public_text(item.item_name)
@@ -204,6 +240,9 @@ class Phase5Pipeline:
             row_claim_hash = text_hash(
                 f"{result.source.source_url}|{normalize_text(sanitized_name)}|{item.price if item.price is not None else 'na'}"
             )
+            dedupe_key = (business_id, row_claim_hash)
+            if dedupe_key in seen_keys:
+                continue
             stmt = select(MenuItem).where(
                 MenuItem.business_id == business_id,
                 MenuItem.claim_hash == row_claim_hash,
@@ -233,10 +272,12 @@ class Phase5Pipeline:
                 session.add(row)
                 written_rows.append(row)
                 self.stats.menu_items_written += 1
+                seen_keys.add(dedupe_key)
             else:
                 for key, value in payload.items():
                     setattr(existing, key, value)
                 written_rows.append(existing)
+                seen_keys.add(dedupe_key)
         return written_rows
 
     def _upsert_capabilities(
@@ -321,6 +362,9 @@ class Phase5Pipeline:
 
         decisions = self._route_sources(sources)
         task_results = self._spawn_scrapers(decisions)
+        source_doc_seen_keys: set[tuple[int, str, str]] = set()
+        evidence_seen_keys: set[tuple[int, str, str]] = set()
+        menu_item_seen_keys: set[tuple[int, str]] = set()
 
         for _task, result in task_results:
             self._upsert_source_document(
@@ -328,18 +372,21 @@ class Phase5Pipeline:
                 SourceDocument=models["SourceDocument"],
                 business_id=business.id,
                 result=result,
+                seen_keys=source_doc_seen_keys,
             )
             self._write_evidence(
                 session=session,
                 EvidencePacket=models["EvidencePacket"],
                 business_id=business.id,
                 result=result,
+                seen_keys=evidence_seen_keys,
             )
             self._write_menu_items(
                 session=session,
                 MenuItem=models["MenuItem"],
                 business_id=business.id,
                 result=result,
+                seen_keys=menu_item_seen_keys,
             )
 
         session.flush()

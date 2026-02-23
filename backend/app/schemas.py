@@ -59,6 +59,7 @@ class SuggestionsResponse(BaseModel):
 class CapabilitiesResponse(BaseModel):
     business_id: int
     capabilities: list[CapabilityView]
+    menu_items: list[str] = Field(default_factory=list)
 
 
 class EvidenceExplanationResponse(BaseModel):
@@ -82,3 +83,60 @@ class HealthMetricsResponse(BaseModel):
     avg_ranking_time_ms: float
     avg_expansion_time_ms: float
     avg_total_time_ms: float
+
+
+class VerifiedClaimRecord(BaseModel):
+    claim_id: str
+    label: str
+    evidence: list[dict[str, Any]]
+    confidence: float = Field(ge=0, le=1)
+    timestamp: datetime
+
+
+class PrecisionSearchResult(BaseModel):
+    id: int
+    name: str
+    lat: float
+    lng: float
+    distance_km: float
+    minutes_away: int
+    driving_minutes: int
+    walking_minutes: int
+    open_now: bool
+    is_chain: bool
+    chain_name: str | None = None
+    precision_score: float = Field(ge=0, le=1)
+    evidence_score: int = Field(ge=0, le=100)
+    verified_claims: list[VerifiedClaimRecord]
+    audit_chain: dict[str, Any]
+    last_updated: datetime
+
+
+class PrecisionSearchResponse(BaseModel):
+    query: str
+    normalized_query: str
+    matched_concepts: list[str]
+    results: list[PrecisionSearchResult]
+
+
+class VerifiedClaimsResponse(BaseModel):
+    business_id: int
+    claims: list[VerifiedClaimRecord]
+
+
+class BusinessModelDebugResponse(BaseModel):
+    business_id: int
+    name: str
+    google_place_id: str | None = None
+    primary_type: str | None = None
+    types: list[str]
+    business_model: dict[str, Any]
+    last_updated: datetime
+
+
+class BusinessModelMetricsResponse(BaseModel):
+    total_businesses: int
+    consumer_facing_distribution: dict[str, int]
+    pure_service_area_true: int
+    missing_field_counts: dict[str, int]
+    missing_field_rates_pct: dict[str, float]

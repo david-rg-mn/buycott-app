@@ -1,0 +1,72 @@
+{
+  "version": "2026-02-22",
+  "consumer_facing_allowlist": [
+    "restaurant",
+    "mexican_restaurant",
+    "chicken_restaurant",
+    "taco_restaurant",
+    "breakfast_restaurant",
+    "cafe",
+    "bakery",
+    "bar",
+    "grocery_store",
+    "supermarket",
+    "food_store",
+    "convenience_store",
+    "pharmacy",
+    "book_store",
+    "clothing_store",
+    "shoe_store",
+    "furniture_store",
+    "electronics_store",
+    "hardware_store",
+    "liquor_store",
+    "car_repair",
+    "auto_parts_store",
+    "florist",
+    "pet_store",
+    "gym",
+    "hair_salon",
+    "barber_shop",
+    "nail_salon",
+    "spa",
+    "car_wash",
+    "bicycle_store",
+    "toy_store"
+  ],
+  "non_consumer_denylist": [
+    "corporate_office",
+    "supplier",
+    "wholesaler",
+    "warehouse",
+    "distribution_service",
+    "manufacturer",
+    "industrial_estate",
+    "storage_facility",
+    "business_to_business_service"
+  ],
+  "b2b_strict_list": [
+    "corporate_office",
+    "supplier",
+    "wholesaler",
+    "warehouse",
+    "distribution_service",
+    "manufacturer",
+    "industrial_estate",
+    "business_to_business_service"
+  ],
+  "strict_appointment_types": [
+    "dentist",
+    "doctor",
+    "medical_clinic",
+    "veterinary_care",
+    "veterinarian",
+    "embassy"
+  ],
+  "strict_restricted_types": [
+    "military_base",
+    "prison",
+    "courthouse",
+    "embassy"
+  ]
+}

@@ -196,16 +196,25 @@ class Capability {
 }
 
 class CapabilityPayload {
-  CapabilityPayload({required this.businessId, required this.capabilities});
+  CapabilityPayload({
+    required this.businessId,
+    required this.capabilities,
+    required this.menuItems,
+  });
 
   final int businessId;
   final List<Capability> capabilities;
+  final List<String> menuItems;
 
   factory CapabilityPayload.fromJson(Map<String, dynamic> json) {
     return CapabilityPayload(
       businessId: json['business_id'] as int,
       capabilities: (json['capabilities'] as List<dynamic>? ?? [])
           .map((item) => Capability.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      menuItems: (json['menu_items'] as List<dynamic>? ?? [])
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
           .toList(),
     );
   }

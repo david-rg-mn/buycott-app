@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
+import re
+import unicodedata
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..models import Business, BusinessCapability, BusinessSource, CapabilityProfile, MenuItem
+from .business_model_service import (
+    BusinessModelFilters,
+    normalize_business_model_document,
+    passes_business_model_filters,
+)
 from ..schemas import (
     BusinessSearchResult,
     CapabilitiesResponse,
@@ -21,6 +29,38 @@ from .embedding_service import get_embedding_service
 from .ontology_service import ontology_service
 from .time_service import is_open_now
 
+logger = logging.getLogger(__name__)
+
+_MENU_INGREDIENT_TERMS: tuple[str, ...] = (
+    "carrot",
+    "jalapeno",
+    "avocado",
+    "beans",
+    "rice",
+    "cheese",
+    "sour cream",
+    "lettuce",
+    "tomato",
+    "onion",
+    "cilantro",
+    "lime",
+    "guacamole",
+    "salsa",
+    "tortilla",
+    "shrimp",
+    "chicken",
+    "beef",
+    "pork",
+    "fish",
+)
+_MENU_INGREDIENT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (
+        term,
+        re.compile(rf"\b{re.escape(term)}(?:es|s)?\b", re.IGNORECASE),
+    )
+    for term in _MENU_INGREDIENT_TERMS
+)
+
 
 @dataclass
 class SearchParams:
@@ -30,6 +70,12 @@ class SearchParams:
     include_chains: bool = False
     open_now: bool = False
     walking_distance: bool = False
+    consumer_facing_only: bool = True
+    include_service_area_businesses: bool = False
+    require_delivery: bool = False
+    require_takeout: bool = False
+    require_dine_in: bool = False
+    require_curbside_pickup: bool = False
     walking_threshold_minutes: int = settings.walking_threshold_minutes
     limit: int = settings.search_result_limit
 
@@ -44,6 +90,33 @@ class Candidate:
 def _clamp_score(raw_similarity: float) -> int:
     scaled = int(round(raw_similarity * 100))
     return max(0, min(100, scaled))
+
+
+def _proximity_score(distance_km: float) -> float:
+    # 1.0 at the user's location, decays smoothly with distance.
+    return 1.0 / (1.0 + max(0.0, distance_km) / 5.0)
+
+
+def _ranking_score(*, similarity: float, distance_km: float, capability_confidence: float) -> float:
+    proximity = _proximity_score(distance_km)
+    cap_conf = max(0.0, min(1.0, capability_confidence))
+    return (0.84 * max(0.0, similarity)) + (0.12 * proximity) + (0.04 * cap_conf)
+
+
+def _extract_menu_description_terms(description: str | None) -> list[str]:
+    if not isinstance(description, str):
+        return []
+    folded = (
+        unicodedata.normalize("NFKD", description)
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    matches: list[str] = []
+    for term, pattern in _MENU_INGREDIENT_PATTERNS:
+        if pattern.search(folded):
+            matches.append(term)
+    return matches
 
 
 def _fetch_sources(db: Session, business_ids: list[int]) -> dict[int, list[BusinessSource]]:
@@ -83,6 +156,12 @@ class SearchService:
             "include_chains": params.include_chains,
             "open_now": params.open_now,
             "walking_distance": params.walking_distance,
+            "consumer_facing_only": params.consumer_facing_only,
+            "include_service_area_businesses": params.include_service_area_businesses,
+            "require_delivery": params.require_delivery,
+            "require_takeout": params.require_takeout,
+            "require_dine_in": params.require_dine_in,
+            "require_curbside_pickup": params.require_curbside_pickup,
             "walking_threshold_minutes": params.walking_threshold_minutes,
         }
 
@@ -190,6 +269,29 @@ class SearchService:
     ) -> dict[int, list[BusinessSource]]:
         return _fetch_sources(db, business_ids)
 
+    @staticmethod
+    def _to_business_model_filters(params: SearchParams) -> BusinessModelFilters:
+        return BusinessModelFilters(
+            consumer_facing_only=params.consumer_facing_only,
+            include_service_area_businesses=params.include_service_area_businesses,
+            require_delivery=params.require_delivery,
+            require_takeout=params.require_takeout,
+            require_dine_in=params.require_dine_in,
+            require_curbside_pickup=params.require_curbside_pickup,
+            open_now=False,
+        )
+
+    @staticmethod
+    def _places_open_now(business_model: dict) -> bool | None:
+        value = (
+            business_model.get("business_model", {})
+            .get("operational", {})
+            .get("open_now")
+        )
+        if isinstance(value, bool):
+            return value
+        return None
+
     @instrument_stage("ranking")
     def _rank_candidates(
         self,
@@ -198,22 +300,45 @@ class SearchService:
         params: SearchParams,
         request_id: str | None,
     ) -> tuple[list[BusinessSearchResult], float]:
-        result_rows: list[BusinessSearchResult] = []
+        scored_rows: list[tuple[float, BusinessSearchResult]] = []
         top_similarity = 0.0
+        filtered_by_business_model = 0
+        filtered_by_consumer_facing = 0
+        filtered_by_open_now = 0
+        filtered_by_distance = 0
 
+        business_model_filters = self._to_business_model_filters(params)
         for candidate in candidate_map.values():
             if candidate.similarity < settings.min_similarity:
                 continue
 
             business = candidate.business
             distance_km = haversine_km(params.lat, params.lng, business.lat, business.lng)
+            if distance_km > settings.max_search_distance_km:
+                filtered_by_distance += 1
+                continue
             walking_minutes, driving_minutes, fastest_minutes = compute_travel_minutes(distance_km)
 
             if params.walking_distance and walking_minutes > params.walking_threshold_minutes:
                 continue
 
-            open_flag = is_open_now(business.hours_json, business.timezone)
-            if params.open_now and not open_flag:
+            business_model = normalize_business_model_document(
+                business.business_model if isinstance(business.business_model, dict) else None
+            )
+            passes_filters, reasons = passes_business_model_filters(
+                business_model,
+                business_model_filters,
+            )
+            if not passes_filters:
+                filtered_by_business_model += 1
+                if "consumer_facing_only" in reasons:
+                    filtered_by_consumer_facing += 1
+                continue
+
+            places_open_now = self._places_open_now(business_model)
+            open_flag = places_open_now if places_open_now is not None else is_open_now(business.hours_json, business.timezone)
+            if params.open_now and places_open_now is not True:
+                filtered_by_open_now += 1
                 continue
 
             raw_types = business.types if isinstance(business.types, list) else []
@@ -225,12 +350,12 @@ class SearchService:
                 badges.append("Independent")
 
             caps = capabilities_map.get(business.id, [])
+            top_capability_confidence = max((float(cap.confidence_score) for cap in caps), default=0.0)
             if business.specialty_score >= 0.72 or (caps and caps[0].confidence_score >= 0.82):
                 badges.append("Specialist")
 
             top_similarity = max(top_similarity, candidate.similarity)
-            result_rows.append(
-                BusinessSearchResult(
+            row = BusinessSearchResult(
                     id=business.id,
                     name=business.name,
                     lat=business.lat,
@@ -252,10 +377,29 @@ class SearchService:
                     matched_terms=sorted(candidate.matched_terms),
                     last_updated=business.last_updated,
                     request_id=request_id,
-                )
             )
+            rank_score = _ranking_score(
+                similarity=candidate.similarity,
+                distance_km=distance_km,
+                capability_confidence=top_capability_confidence,
+            )
+            scored_rows.append((rank_score, row))
 
-        result_rows.sort(key=lambda item: (item.distance_km, item.name.lower()))
+        scored_rows.sort(key=lambda item: (-item[0], item[1].distance_km, item[1].name.lower()))
+        result_rows = [row for _score, row in scored_rows]
+        if candidate_map:
+            consumer_filter_rate = round((filtered_by_consumer_facing / len(candidate_map)) * 100.0, 2)
+            logger.info(
+                "business_model_filtering: candidates=%s kept=%s filtered_business_model=%s "
+                "filtered_consumer_facing=%s filtered_consumer_facing_pct=%s filtered_open_now=%s filtered_distance=%s",
+                len(candidate_map),
+                len(result_rows),
+                filtered_by_business_model,
+                filtered_by_consumer_facing,
+                consumer_filter_rate,
+                filtered_by_open_now,
+                filtered_by_distance,
+            )
         return result_rows, top_similarity
 
     def search(self, db: Session, params: SearchParams) -> SearchResponse:
@@ -325,17 +469,31 @@ class SearchService:
         business_ids = [business.id for business in businesses]
         capabilities_map = self._fetch_capabilities_map(db, business_ids)
         _ = self._fetch_sources_map(db, business_ids)
+        business_model_filters = self._to_business_model_filters(params)
 
         result_rows: list[BusinessSearchResult] = []
         for business in businesses:
             distance_km = haversine_km(params.lat, params.lng, business.lat, business.lng)
+            if distance_km > settings.max_search_distance_km:
+                continue
             walking_minutes, driving_minutes, fastest_minutes = compute_travel_minutes(distance_km)
 
             if params.walking_distance and walking_minutes > params.walking_threshold_minutes:
                 continue
 
-            open_flag = is_open_now(business.hours_json, business.timezone)
-            if params.open_now and not open_flag:
+            business_model = normalize_business_model_document(
+                business.business_model if isinstance(business.business_model, dict) else None
+            )
+            passes_filters, _reasons = passes_business_model_filters(
+                business_model,
+                business_model_filters,
+            )
+            if not passes_filters:
+                continue
+
+            places_open_now = self._places_open_now(business_model)
+            open_flag = places_open_now if places_open_now is not None else is_open_now(business.hours_json, business.timezone)
+            if params.open_now and places_open_now is not True:
                 continue
 
             raw_types = business.types if isinstance(business.types, list) else []
@@ -439,20 +597,21 @@ class SearchService:
                 )
             )
 
-        menu_stmt = (
-            select(MenuItem)
-            .where(MenuItem.business_id == business_id)
-            .order_by(MenuItem.extraction_confidence.desc(), MenuItem.id.asc())
-        )
-        menu_items = db.execute(menu_stmt).scalars().all()
-        for item in menu_items:
-            _append_term(
-                term=str(item.item_name),
-                confidence=float(item.extraction_confidence),
-                source_reference="phase5:menu_item",
-            )
-            if len(response_terms) >= cap_limit:
-                break
+        def _collect_menu_item_names(rows: list[MenuItem]) -> list[str]:
+            names: list[str] = []
+            seen: set[str] = set()
+            for row in rows:
+                if not isinstance(row.item_name, str):
+                    continue
+                cleaned = _clean_term(row.item_name)
+                if not cleaned:
+                    continue
+                normalized = cleaned.lower()
+                if normalized in seen:
+                    continue
+                seen.add(normalized)
+                names.append(cleaned)
+            return names
 
         profile_stmt = (
             select(CapabilityProfile)
@@ -460,6 +619,8 @@ class SearchService:
             .order_by(CapabilityProfile.confidence_score.desc(), CapabilityProfile.id.asc())
         )
         profiles = db.execute(profile_stmt).scalars().all()
+        reserve_menu_slots = min(10, max(2, cap_limit // 3))
+        profile_budget = max(0, cap_limit - reserve_menu_slots)
         for profile in profiles:
             items = profile.canonical_items if isinstance(profile.canonical_items, list) else []
             for raw_term in items:
@@ -470,8 +631,40 @@ class SearchService:
                     confidence=float(profile.confidence_score),
                     source_reference=f"phase5:{profile.capability_type}",
                 )
-                if len(response_terms) >= cap_limit:
+                if len(response_terms) >= profile_budget:
                     break
+            if len(response_terms) >= profile_budget:
+                break
+
+        # Fill remaining slots with deterministic ingredient terms from menu descriptions.
+        menu_stmt = (
+            select(MenuItem)
+            .where(MenuItem.business_id == business_id)
+            .order_by(MenuItem.extraction_confidence.desc(), MenuItem.id.asc())
+        )
+        menu_items = db.execute(menu_stmt).scalars().all()
+        full_menu_item_names = _collect_menu_item_names(menu_items)
+        description_blob = " ".join(
+            item.description.strip()
+            for item in menu_items
+            if isinstance(item.description, str) and item.description.strip()
+        )
+        for ingredient_term in _extract_menu_description_terms(description_blob):
+            _append_term(
+                term=ingredient_term,
+                confidence=0.78,
+                source_reference="phase5:menu_description",
+            )
+            if len(response_terms) >= cap_limit:
+                break
+
+        # Fill any remaining slots with concrete menu item names.
+        for item in menu_items:
+            _append_term(
+                term=str(item.item_name),
+                confidence=float(item.extraction_confidence),
+                source_reference="phase5:menu_item",
+            )
             if len(response_terms) >= cap_limit:
                 break
 
@@ -479,6 +672,7 @@ class SearchService:
             return CapabilitiesResponse(
                 business_id=business_id,
                 capabilities=response_terms,
+                menu_items=full_menu_item_names,
             )
 
         legacy_stmt = (
@@ -498,6 +692,7 @@ class SearchService:
                 )
                 for item in legacy_capabilities
             ],
+            menu_items=full_menu_item_names,
         )
 
     def evidence_explanation(self, db: Session, business_id: int, query: str) -> EvidenceExplanationResponse | None:
@@ -569,6 +764,89 @@ class SearchService:
             ],
             last_updated=business.last_updated,
         )
+
+    def business_model_debug(self, db: Session, business_id: int) -> dict | None:
+        business = db.get(Business, business_id)
+        if business is None:
+            return None
+        normalized = normalize_business_model_document(
+            business.business_model if isinstance(business.business_model, dict) else None
+        )
+        return {
+            "business_id": int(business.id),
+            "name": business.name,
+            "google_place_id": business.google_place_id,
+            "primary_type": business.primary_type,
+            "types": business.types if isinstance(business.types, list) else [],
+            "business_model": normalized,
+            "last_updated": business.last_updated,
+        }
+
+    def business_model_metrics(self, db: Session) -> dict:
+        businesses = db.execute(select(Business.id, Business.business_model)).all()
+        total = len(businesses)
+
+        consumer_counts = {"true": 0, "false": 0, "null": 0}
+        pure_service_area_true = 0
+        missing_field_counts: dict[str, int] = {
+            "consumer_facing": 0,
+            "storefront.pure_service_area_business": 0,
+            "fulfillment.delivery": 0,
+            "fulfillment.takeout": 0,
+            "fulfillment.dine_in": 0,
+            "fulfillment.curbside_pickup": 0,
+            "booking.reservable": 0,
+            "operational.open_now": 0,
+        }
+
+        for _business_id, raw_model in businesses:
+            normalized = normalize_business_model_document(raw_model if isinstance(raw_model, dict) else None)
+            bm = normalized.get("business_model", {})
+
+            consumer = bm.get("consumer_facing")
+            if consumer is True:
+                consumer_counts["true"] += 1
+            elif consumer is False:
+                consumer_counts["false"] += 1
+            else:
+                consumer_counts["null"] += 1
+
+            storefront = bm.get("storefront", {})
+            if storefront.get("pure_service_area_business") is True:
+                pure_service_area_true += 1
+
+            for key, path in {
+                "consumer_facing": ("consumer_facing",),
+                "storefront.pure_service_area_business": ("storefront", "pure_service_area_business"),
+                "fulfillment.delivery": ("fulfillment", "delivery"),
+                "fulfillment.takeout": ("fulfillment", "takeout"),
+                "fulfillment.dine_in": ("fulfillment", "dine_in"),
+                "fulfillment.curbside_pickup": ("fulfillment", "curbside_pickup"),
+                "booking.reservable": ("booking", "reservable"),
+                "operational.open_now": ("operational", "open_now"),
+            }.items():
+                current = bm
+                missing = False
+                for step in path:
+                    if not isinstance(current, dict) or step not in current:
+                        missing = True
+                        break
+                    current = current.get(step)
+                if missing or current is None:
+                    missing_field_counts[key] += 1
+
+        missing_field_rates = {
+            key: (round((count / total) * 100.0, 2) if total > 0 else 0.0)
+            for key, count in missing_field_counts.items()
+        }
+
+        return {
+            "total_businesses": total,
+            "consumer_facing_distribution": consumer_counts,
+            "pure_service_area_true": pure_service_area_true,
+            "missing_field_counts": missing_field_counts,
+            "missing_field_rates_pct": missing_field_rates,
+        }
 
 
 search_service = SearchService()

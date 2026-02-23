@@ -43,7 +43,9 @@ class Business(Base):
     website: Mapped[str | None] = mapped_column(Text, nullable=True)
     hours: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     hours_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    primary_type: Mapped[str | None] = mapped_column(Text, nullable=True)
     types: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    business_model: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     google_last_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     google_source: Mapped[str] = mapped_column(
         String(64),
@@ -83,6 +85,33 @@ class Business(Base):
         passive_deletes=True,
     )
     capability_profiles: Mapped[list["CapabilityProfile"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    global_footprint: Mapped["GlobalFootprint | None"] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    vertical_slices: Mapped[list["VerticalSlice"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    evidence_index_terms: Mapped[list["EvidenceIndexTerm"]] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    micrograph: Mapped["BusinessMicrograph | None"] = relationship(
+        back_populates="business",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    verified_claims: Mapped[list["VerifiedClaim"]] = relationship(
         back_populates="business",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -271,6 +300,102 @@ class BusinessCapability(Base):
     last_updated: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     business: Mapped[Business] = relationship(back_populates="capabilities")
+
+
+class GlobalFootprint(Base):
+    __tablename__ = "global_footprints"
+    __table_args__ = (CheckConstraint("coverage_score >= 0 AND coverage_score <= 1", name="ck_global_footprint_coverage"),)
+
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    feature_vector: Mapped[list[float]] = mapped_column(Vector(384), nullable=False)
+    feature_flags: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    coverage_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="global_footprint")
+
+
+class VerticalSlice(Base):
+    __tablename__ = "vertical_slices"
+    __table_args__ = (UniqueConstraint("business_id", "slice_key", name="uq_vertical_slice"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    slice_key: Mapped[str] = mapped_column(String(96), nullable=False)
+    category_weights: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    slice_terms: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="vertical_slices")
+
+
+class EvidenceIndexTerm(Base):
+    __tablename__ = "evidence_index_terms"
+    __table_args__ = (
+        UniqueConstraint("business_id", "term", "claim_id", "source_kind", name="uq_evidence_index_term"),
+        CheckConstraint("weight >= 0 AND weight <= 1", name="ck_evidence_index_weight"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    term: Mapped[str] = mapped_column(Text, nullable=False)
+    claim_id: Mapped[str] = mapped_column(Text, nullable=False)
+    source_kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_ref: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    provenance: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    weight: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="evidence_index_terms")
+
+
+class BusinessMicrograph(Base):
+    __tablename__ = "business_micrographs"
+
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    graph_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    business: Mapped[Business] = relationship(back_populates="micrograph")
+
+
+class VerifiedClaim(Base):
+    __tablename__ = "verified_claims"
+    __table_args__ = (
+        UniqueConstraint("business_id", "claim_id", name="uq_verified_claim"),
+        CheckConstraint("confidence >= 0 AND confidence <= 1", name="ck_verified_claim_confidence"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    business_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("businesses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    claim_id: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[list[dict]] = mapped_column(JSON, nullable=False, default=list)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    audit_chain: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    business: Mapped[Business] = relationship(back_populates="verified_claims")
 
 
 class TelemetryLog(Base):

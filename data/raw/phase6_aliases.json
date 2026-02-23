@@ -1,0 +1,58 @@
+{
+  "biz.type.taqueria": [
+    "taqueria",
+    "taquer\u00eda",
+    "taco shop",
+    "taco stand"
+  ],
+  "biz.type.tortilleria": [
+    "tortilleria",
+    "tortiller\u00eda"
+  ],
+  "biz.category.mexican_restaurant": [
+    "mexican restaurant",
+    "restaurante mexicano"
+  ],
+  "food.taco": [
+    "taco",
+    "tacos"
+  ],
+  "food.dish.alambre": [
+    "alambre",
+    "alambres"
+  ],
+  "food.filling.carnitas": [
+    "carnitas"
+  ],
+  "food.filling.al_pastor": [
+    "al pastor"
+  ],
+  "food.tortilla": [
+    "tortilla",
+    "tortillas"
+  ],
+  "service.pedicure": [
+    "pedicure",
+    "pedicures"
+  ],
+  "service.nailpolish": [
+    "nail polish",
+    "gel polish",
+    "shellac polish"
+  ],
+  "service.pedi_mani_combo": [
+    "mani pedi",
+    "pedi mani",
+    "manicure pedicure combo"
+  ],
+  "biz.type.gym": [
+    "gym",
+    "fitness center",
+    "fitness centre"
+  ],
+  "service.personal_training": [
+    "personal training",
+    "personal trainer",
+    "strength coaching"
+  ]
+}

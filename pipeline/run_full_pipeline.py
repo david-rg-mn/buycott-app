@@ -102,6 +102,11 @@ def main() -> None:
         help="Run Google Places ingestion for Powderhorn before embeddings",
     )
     parser.add_argument(
+        "--seed-google-force-refresh",
+        action="store_true",
+        help="Force Google Places refresh even when existing records are within TTL.",
+    )
+    parser.add_argument(
         "--mode",
         choices=("auto", "local", "docker"),
         default="auto",
@@ -129,6 +134,35 @@ def main() -> None:
         action="store_true",
         help="Override Docker sandbox enforcement for Phase 5 (not recommended).",
     )
+    parser.add_argument(
+        "--phase6-precision",
+        action="store_true",
+        help="Run Phase 6 deterministic multi-layer semantic indexing pipeline.",
+    )
+    parser.add_argument(
+        "--phase6-business-id",
+        action="append",
+        type=int,
+        default=[],
+        help="Optional business id filter for Phase 6 (can be used multiple times).",
+    )
+    parser.add_argument(
+        "--phase6-limit",
+        type=int,
+        default=None,
+        help="Optional max businesses to process in Phase 6 when ids are not provided.",
+    )
+    parser.add_argument(
+        "--rebuild-business-model",
+        action="store_true",
+        help="Backfill and normalize Places-only business_model payloads for all businesses.",
+    )
+    parser.add_argument(
+        "--rebuild-business-model-limit",
+        type=int,
+        default=None,
+        help="Optional max businesses for business_model backfill.",
+    )
     args = parser.parse_args()
 
     try:
@@ -141,7 +175,15 @@ def main() -> None:
         _run("init_db.py", mode)
 
     if args.seed_google:
-        _run("google_places_seed.py", mode)
+        seed_args: list[str] = []
+        if args.seed_google_force_refresh:
+            seed_args.append("--force-refresh")
+        _run("google_places_seed.py", mode, seed_args)
+    if args.rebuild_business_model:
+        rebuild_args: list[str] = []
+        if args.rebuild_business_model_limit is not None:
+            rebuild_args.extend(["--limit", str(args.rebuild_business_model_limit)])
+        _run("rebuild_business_models.py", mode, rebuild_args)
     if args.phase5_openclaw:
         phase5_args: list[str] = []
         for place_id in args.phase5_place_id:
@@ -151,6 +193,13 @@ def main() -> None:
         if args.phase5_allow_host_execution:
             phase5_args.append("--allow-host-execution")
         _run("phase5_openclaw_pipeline.py", mode, phase5_args)
+    if args.phase6_precision:
+        phase6_args: list[str] = []
+        for business_id in args.phase6_business_id:
+            phase6_args.extend(["--business-id", str(business_id)])
+        if args.phase6_limit is not None:
+            phase6_args.extend(["--limit", str(args.phase6_limit)])
+        _run("phase6_precision_pipeline.py", mode, phase6_args)
     _run("build_embeddings.py", mode)
     _run("rebuild_capabilities.py", mode)
     print("Pipeline completed")

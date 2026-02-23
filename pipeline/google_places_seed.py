@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -23,10 +24,34 @@ REQUEST_COST_USD = 0.017
 MAX_SEARCH_PAGES = 3
 SEARCH_QUERY = "businesses near Powderhorn Park, Minneapolis"
 
-SEARCH_FIELD_MASK = "places.id,nextPageToken"
-DETAILS_FIELD_MASK = (
-    "id,displayName,formattedAddress,location,types,websiteUri,nationalPhoneNumber,regularOpeningHours"
+REQUIRED_PLACE_FIELDS = (
+    "id",
+    "primaryType",
+    "types",
+    "businessStatus",
+    "pureServiceAreaBusiness",
+    "delivery",
+    "takeout",
+    "dineIn",
+    "curbsidePickup",
+    "reservable",
+    "currentOpeningHours",
+    "regularOpeningHours",
 )
+OPTIONAL_PLACE_FIELDS = (
+    "accessibilityOptions",
+    "paymentOptions",
+    "parkingOptions",
+)
+DETAILS_ALWAYS_FIELDS = ("displayName", "formattedAddress", "location", "websiteUri", "nationalPhoneNumber")
+SEARCH_FIELD_MASK = ",".join(
+    (
+        "nextPageToken",
+        *[f"places.{field}" for field in REQUIRED_PLACE_FIELDS],
+        *[f"places.{field}" for field in OPTIONAL_PLACE_FIELDS],
+    )
+)
+DETAILS_FIELD_MASK = ",".join((*DETAILS_ALWAYS_FIELDS, *REQUIRED_PLACE_FIELDS, *OPTIONAL_PLACE_FIELDS))
 PLACES_SOURCE_TYPE = "places_api"
 WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
 
@@ -42,6 +67,11 @@ class RunStats:
     skipped_fresh: int = 0
     skipped_missing_location: int = 0
     detail_failures: int = 0
+    places_processed: int = 0
+    consumer_facing_true: int = 0
+    consumer_facing_false: int = 0
+    consumer_facing_null: int = 0
+    pure_service_area_true: int = 0
 
 
 class CostGuard:
@@ -102,6 +132,31 @@ def _env_int(name: str, default: int) -> int:
     raw_value = os.getenv(name)
     if raw_value is None or raw_value.strip() == "":
         return default
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise RuntimeError(f"Invalid {name} value: {raw_value}") from exc
+    if value <= 0:
+        raise RuntimeError(f"{name} must be > 0")
+    return value
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"Invalid {name} value: {raw_value}")
+
+
+def _env_optional_int(name: str) -> int | None:
+    raw_value = os.getenv(name)
+    if raw_value is None or raw_value.strip() == "":
+        return None
     try:
         value = int(raw_value)
     except ValueError as exc:
@@ -250,14 +305,20 @@ def _google_hours_to_internal_windows(hours: dict[str, Any] | None) -> dict[str,
 def _build_text_content(
     name: str,
     formatted_address: str | None,
+    primary_type: str | None,
     types: list[str],
+    business_status: str | None,
     hours: dict[str, Any] | None,
 ) -> str:
     parts: list[str] = [name]
     if formatted_address:
         parts.append(formatted_address)
+    if primary_type:
+        parts.append("Primary type: " + primary_type)
     if types:
         parts.append("Types: " + ", ".join(types))
+    if business_status:
+        parts.append("Business status: " + business_status)
 
     weekday_descriptions = hours.get("weekdayDescriptions") if hours else None
     if isinstance(weekday_descriptions, list):
@@ -295,15 +356,27 @@ def _request_json(
     return payload
 
 
-def _search_place_ids(client: httpx.Client, api_key: str, guard: CostGuard) -> list[str]:
+def _search_place_ids(
+    client: httpx.Client,
+    api_key: str,
+    guard: CostGuard,
+    *,
+    search_query: str,
+    max_places: int | None = None,
+) -> list[str]:
     place_ids: list[str] = []
     seen_ids: set[str] = set()
     page_token: str | None = None
 
     for _ in range(MAX_SEARCH_PAGES):
+        if max_places is not None and len(place_ids) >= max_places:
+            break
+
+        remaining = max_places - len(place_ids) if max_places is not None else 20
+        page_size = min(20, max(1, remaining))
         body: dict[str, Any] = {
-            "textQuery": SEARCH_QUERY,
-            "pageSize": 20,
+            "textQuery": search_query,
+            "pageSize": page_size,
             "locationBias": {
                 "circle": {
                     "center": {
@@ -334,8 +407,12 @@ def _search_place_ids(client: httpx.Client, api_key: str, guard: CostGuard) -> l
                 continue
             seen_ids.add(place_id)
             place_ids.append(place_id)
+            if max_places is not None and len(place_ids) >= max_places:
+                break
 
         next_page = payload.get("nextPageToken")
+        if max_places is not None and len(place_ids) >= max_places:
+            break
         if not isinstance(next_page, str) or not next_page.strip():
             break
         page_token = next_page.strip()
@@ -377,7 +454,12 @@ def _upsert_google_source(session, BusinessSource, business_id: int, place_id: s
     existing.last_fetched = utcnow()
 
 
-def run() -> None:
+def run(
+    *,
+    force_refresh: bool | None = None,
+    search_query: str | None = None,
+    max_places: int | None = None,
+) -> None:
     import sys
     from pathlib import Path
 
@@ -387,25 +469,42 @@ def run() -> None:
         sys.path.insert(0, str(backend_path))
 
     from app.models import Business, BusinessSource, GoogleApiUsageLog
+    from app.services.business_model_service import build_business_model_from_places
 
     api_key = _require_api_key()
     max_run_cost_usd = _env_float("MAX_RUN_COST_USD", 1.0)
     max_monthly_cost_usd = _env_float("MAX_MONTHLY_COST_USD", 5.0)
     ttl_days = _env_int("GOOGLE_DATA_TTL_DAYS", 30)
+    force_refresh_enabled = force_refresh if force_refresh is not None else _env_bool("GOOGLE_FORCE_REFRESH", False)
+    search_query_value = (search_query or os.getenv("GOOGLE_SEARCH_QUERY") or SEARCH_QUERY).strip()
+    if not search_query_value:
+        raise RuntimeError("search query must not be empty")
+    max_places_value = max_places if max_places is not None else _env_optional_int("GOOGLE_MAX_PLACES")
 
     session = get_session()
     guard = CostGuard(max_run_cost_usd=max_run_cost_usd, max_monthly_cost_usd=max_monthly_cost_usd)
     stats = RunStats()
+    missing_field_counter: Counter[str] = Counter()
     now_utc = utcnow()
     now_utc_naive = now_utc.replace(tzinfo=None)
 
     try:
         guard.load_monthly_cost(session, GoogleApiUsageLog)
         with httpx.Client(base_url=PLACES_API_BASE_URL, timeout=20.0) as client:
-            place_ids = _search_place_ids(client, api_key, guard)
+            place_ids = _search_place_ids(
+                client,
+                api_key,
+                guard,
+                search_query=search_query_value,
+                max_places=max_places_value,
+            )
             for place_id in place_ids:
                 existing = session.execute(select(Business).where(Business.google_place_id == place_id)).scalar_one_or_none()
-                if existing is not None and not _is_stale(existing.google_last_fetched_at, ttl_days):
+                if (
+                    existing is not None
+                    and not force_refresh_enabled
+                    and not _is_stale(existing.google_last_fetched_at, ttl_days)
+                ):
                     stats.skipped_fresh += 1
                     continue
 
@@ -430,10 +529,47 @@ def run() -> None:
                     continue
 
                 types = _normalize_types(details.get("types"))
+                primary_type = _coerce_text(details.get("primaryType"))
+                business_status = _coerce_text(details.get("businessStatus"))
                 website = _coerce_text(details.get("websiteUri"))
                 phone = _coerce_text(details.get("nationalPhoneNumber"))
                 hours = _normalize_hours(details.get("regularOpeningHours"))
-                text_content = _build_text_content(display_name, formatted_address, types, hours)
+                text_content = _build_text_content(
+                    display_name,
+                    formatted_address,
+                    primary_type,
+                    types,
+                    business_status,
+                    hours,
+                )
+                business_model = build_business_model_from_places(
+                    details,
+                    field_mask=DETAILS_FIELD_MASK,
+                    computed_at=now_utc,
+                )
+
+                stats.places_processed += 1
+                consumer_facing = (
+                    business_model.get("business_model", {})
+                    .get("consumer_facing")
+                )
+                if consumer_facing is True:
+                    stats.consumer_facing_true += 1
+                elif consumer_facing is False:
+                    stats.consumer_facing_false += 1
+                else:
+                    stats.consumer_facing_null += 1
+                if (
+                    business_model.get("business_model", {})
+                    .get("storefront", {})
+                    .get("pure_service_area_business")
+                    is True
+                ):
+                    stats.pure_service_area_true += 1
+
+                for field_name in (*REQUIRED_PLACE_FIELDS, *OPTIONAL_PLACE_FIELDS):
+                    if field_name not in details:
+                        missing_field_counter[field_name] += 1
 
                 if existing is None:
                     business = Business(
@@ -457,7 +593,9 @@ def run() -> None:
                 business.website = website
                 business.hours = hours
                 business.hours_json = _google_hours_to_internal_windows(hours)
+                business.primary_type = primary_type
                 business.types = types
+                business.business_model = business_model
                 business.google_last_fetched_at = now_utc_naive
                 business.google_source = "places_api"
                 business.text_content = text_content
@@ -484,8 +622,20 @@ def run() -> None:
             "Google Places seed complete: "
             f"inserted={stats.inserted}, updated={stats.updated}, skipped_fresh={stats.skipped_fresh}, "
             f"missing_location={stats.skipped_missing_location}, detail_failures={stats.detail_failures}, "
-            f"requests={guard.request_count}, estimated_cost=${guard.estimated_cost:.3f}"
+            f"requests={guard.request_count}, estimated_cost=${guard.estimated_cost:.3f}, "
+            f"query='{search_query_value}', max_places={max_places_value}, "
+            f"places_processed={stats.places_processed}, "
+            f"consumer_facing_true={stats.consumer_facing_true}, "
+            f"consumer_facing_false={stats.consumer_facing_false}, "
+            f"consumer_facing_null={stats.consumer_facing_null}, "
+            f"pure_service_area_true={stats.pure_service_area_true}"
         )
+        if stats.places_processed > 0:
+            missing_rates = {
+                key: round((value / stats.places_processed) * 100.0, 2)
+                for key, value in sorted(missing_field_counter.items())
+            }
+            print(f"Google Places missing-field rates (%): {missing_rates}")
     except Exception:
         session.rollback()
         if guard.request_count > 0:
@@ -506,7 +656,31 @@ def run() -> None:
 
 
 def main() -> None:
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Seed/update businesses from Google Places API (New).")
+    parser.add_argument(
+        "--force-refresh",
+        action="store_true",
+        help="Ignore TTL freshness checks and refresh all discovered Google place records.",
+    )
+    parser.add_argument(
+        "--search-query",
+        default=None,
+        help="Google Places Text Search query. Defaults to Powderhorn query or GOOGLE_SEARCH_QUERY env var.",
+    )
+    parser.add_argument(
+        "--max-places",
+        type=int,
+        default=None,
+        help="Optional cap on the number of place ids to process in this run.",
+    )
+    args = parser.parse_args()
+    run(
+        force_refresh=args.force_refresh,
+        search_query=args.search_query,
+        max_places=args.max_places,
+    )
 
 
 if __name__ == "__main__":

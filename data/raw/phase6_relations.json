@@ -1,0 +1,44 @@
+[
+  {
+    "source": "biz.type.taqueria",
+    "relation": "specializes_in",
+    "target": "food.taco",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "biz.category.mexican_restaurant",
+    "relation": "offers",
+    "target": "food.taco",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "food.filling.carnitas",
+    "relation": "used_in",
+    "target": "food.taco",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "food.filling.al_pastor",
+    "relation": "used_in",
+    "target": "food.taco",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "food.dish.alambre",
+    "relation": "served_with",
+    "target": "food.tortilla",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "service.nailpolish",
+    "relation": "requires",
+    "target": "service.pedicure",
+    "provenance": "phase6.curated.v1"
+  },
+  {
+    "source": "biz.type.gym",
+    "relation": "offers",
+    "target": "service.personal_training",
+    "provenance": "phase6.curated.v1"
+  }
+]

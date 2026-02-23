@@ -18,7 +18,9 @@ CREATE TABLE IF NOT EXISTS businesses (
   website TEXT,
   hours JSONB,
   hours_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  primary_type TEXT,
   types JSONB,
+  business_model JSONB NOT NULL DEFAULT '{}'::jsonb,
   google_last_fetched_at TIMESTAMP,
   google_source TEXT NOT NULL DEFAULT 'places_api',
   timezone TEXT NOT NULL DEFAULT 'America/Chicago',
@@ -32,10 +34,15 @@ ALTER TABLE businesses ADD COLUMN IF NOT EXISTS formatted_address TEXT;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS hours JSONB;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS primary_type TEXT;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS types JSONB;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS business_model JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_last_fetched_at TIMESTAMP;
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS google_source TEXT DEFAULT 'places_api';
 ALTER TABLE businesses ADD COLUMN IF NOT EXISTS canonical_summary_text TEXT;
+UPDATE businesses SET business_model = '{}'::jsonb WHERE business_model IS NULL;
+ALTER TABLE businesses ALTER COLUMN business_model SET DEFAULT '{}'::jsonb;
+ALTER TABLE businesses ALTER COLUMN business_model SET NOT NULL;
 ALTER TABLE businesses ALTER COLUMN google_source SET DEFAULT 'places_api';
 UPDATE businesses SET google_source = 'places_api' WHERE google_source IS NULL;
 ALTER TABLE businesses ALTER COLUMN google_source SET NOT NULL;
@@ -154,6 +161,55 @@ CREATE TABLE IF NOT EXISTS business_capabilities (
   UNIQUE (business_id, ontology_term)
 );
 
+CREATE TABLE IF NOT EXISTS global_footprints (
+  business_id BIGINT PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  feature_vector VECTOR(384) NOT NULL,
+  feature_flags JSONB NOT NULL DEFAULT '{}'::jsonb,
+  coverage_score REAL NOT NULL DEFAULT 0 CHECK (coverage_score >= 0 AND coverage_score <= 1),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS vertical_slices (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  slice_key TEXT NOT NULL,
+  category_weights JSONB NOT NULL DEFAULT '{}'::jsonb,
+  slice_terms JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, slice_key)
+);
+
+CREATE TABLE IF NOT EXISTS evidence_index_terms (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  term TEXT NOT NULL,
+  claim_id TEXT NOT NULL,
+  source_kind TEXT NOT NULL,
+  evidence_ref JSONB NOT NULL DEFAULT '{}'::jsonb,
+  provenance JSONB NOT NULL DEFAULT '{}'::jsonb,
+  weight REAL NOT NULL DEFAULT 0 CHECK (weight >= 0 AND weight <= 1),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (business_id, term, claim_id, source_kind)
+);
+
+CREATE TABLE IF NOT EXISTS business_micrographs (
+  business_id BIGINT PRIMARY KEY REFERENCES businesses(id) ON DELETE CASCADE,
+  graph_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS verified_claims (
+  id BIGSERIAL PRIMARY KEY,
+  business_id BIGINT NOT NULL REFERENCES businesses(id) ON DELETE CASCADE,
+  claim_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+  confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  audit_chain JSONB NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (business_id, claim_id)
+);
+
 CREATE TABLE IF NOT EXISTS telemetry_logs (
   request_id UUID PRIMARY KEY,
   query_text TEXT,
@@ -176,6 +232,8 @@ CREATE TABLE IF NOT EXISTS google_api_usage_log (
 
 CREATE INDEX IF NOT EXISTS idx_businesses_lat_lng ON businesses(lat, lng);
 CREATE INDEX IF NOT EXISTS idx_businesses_is_chain ON businesses(is_chain);
+CREATE INDEX IF NOT EXISTS idx_businesses_primary_type ON businesses(primary_type);
+CREATE INDEX IF NOT EXISTS idx_businesses_business_model_gin ON businesses USING GIN (business_model jsonb_path_ops);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_businesses_google_place_id_unique
   ON businesses(google_place_id)
   WHERE google_place_id IS NOT NULL;
@@ -196,6 +254,13 @@ CREATE INDEX IF NOT EXISTS idx_ontology_terms_parent_term ON ontology_terms(pare
 CREATE INDEX IF NOT EXISTS idx_ontology_terms_term_trgm ON ontology_terms USING GIN (term gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_business_id ON business_capabilities(business_id);
 CREATE INDEX IF NOT EXISTS idx_business_capabilities_term ON business_capabilities(ontology_term);
+CREATE INDEX IF NOT EXISTS idx_vertical_slices_business_id ON vertical_slices(business_id);
+CREATE INDEX IF NOT EXISTS idx_vertical_slices_slice_key ON vertical_slices(slice_key);
+CREATE INDEX IF NOT EXISTS idx_evidence_index_terms_business_id ON evidence_index_terms(business_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_index_terms_term ON evidence_index_terms(term);
+CREATE INDEX IF NOT EXISTS idx_evidence_index_terms_claim_id ON evidence_index_terms(claim_id);
+CREATE INDEX IF NOT EXISTS idx_verified_claims_business_id ON verified_claims(business_id);
+CREATE INDEX IF NOT EXISTS idx_verified_claims_claim_id ON verified_claims(claim_id);
 CREATE INDEX IF NOT EXISTS idx_telemetry_logs_timestamp ON telemetry_logs(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_google_api_usage_log_timestamp ON google_api_usage_log(timestamp DESC);
 
@@ -210,6 +275,22 @@ BEGIN
     CREATE INDEX idx_businesses_embedding_ivfflat
       ON businesses
       USING ivfflat (embedding vector_cosine_ops)
+      WITH (lists = 100);
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'idx_global_footprints_vector_ivfflat'
+  ) THEN
+    CREATE INDEX idx_global_footprints_vector_ivfflat
+      ON global_footprints
+      USING ivfflat (feature_vector vector_cosine_ops)
       WITH (lists = 100);
   END IF;
 END

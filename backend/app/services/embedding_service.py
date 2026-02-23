@@ -2,6 +2,7 @@ import hashlib
 import logging
 import re
 from functools import lru_cache
+from threading import Lock
 from typing import Iterable
 
 import numpy as np
@@ -19,23 +20,36 @@ class EmbeddingService:
     def __init__(self) -> None:
         self._model = None
         self._model_failed = False
+        self._model_lock = Lock()
 
     def _load_model(self):
         if not settings.enable_model_embeddings or self._model_failed:
             return None
-        if self._model is not None:
-            return self._model
+        with self._model_lock:
+            if self._model is not None:
+                return self._model
+            if self._model_failed:
+                return None
 
-        try:
-            from sentence_transformers import SentenceTransformer
+            try:
+                from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(settings.embedding_model_name)
-            logger.info("Loaded embedding model: %s", settings.embedding_model_name)
-        except Exception as exc:  # pragma: no cover - depends on runtime availability
-            self._model_failed = True
-            logger.warning("Falling back to deterministic embeddings: %s", exc)
-            self._model = None
+                model = SentenceTransformer(settings.embedding_model_name, device="cpu")
+                # Preflight a tiny encode to ensure model tensors are materialized correctly.
+                _ = model.encode(["healthcheck"], normalize_embeddings=True)
+                self._model = model
+                logger.info("Loaded embedding model: %s", settings.embedding_model_name)
+            except Exception as exc:  # pragma: no cover - depends on runtime availability
+                self._model_failed = True
+                logger.warning("Falling back to deterministic embeddings: %s", exc)
+                self._model = None
         return self._model
+
+    def _mark_model_failed(self, exc: Exception) -> None:
+        with self._model_lock:
+            self._model_failed = True
+            self._model = None
+        logger.warning("Embedding model inference failed; using deterministic fallback: %s", exc)
 
     def _hash_embed(self, text: str) -> list[float]:
         dim = settings.embedding_dimension
@@ -60,10 +74,13 @@ class EmbeddingService:
     def encode(self, text: str) -> list[float]:
         model = self._load_model()
         if model is not None:
-            vector = model.encode(text, normalize_embeddings=True)
-            if hasattr(vector, "tolist"):
-                return vector.tolist()
-            return list(vector)
+            try:
+                vector = model.encode(text, normalize_embeddings=True)
+                if hasattr(vector, "tolist"):
+                    return vector.tolist()
+                return list(vector)
+            except Exception as exc:  # pragma: no cover - runtime dependent
+                self._mark_model_failed(exc)
         return self._hash_embed(text)
 
     def encode_many(self, texts: Iterable[str]) -> list[list[float]]:
@@ -73,8 +90,11 @@ class EmbeddingService:
 
         model = self._load_model()
         if model is not None:
-            matrix = model.encode(text_list, normalize_embeddings=True)
-            return [row.tolist() if hasattr(row, "tolist") else list(row) for row in matrix]
+            try:
+                matrix = model.encode(text_list, normalize_embeddings=True)
+                return [row.tolist() if hasattr(row, "tolist") else list(row) for row in matrix]
+            except Exception as exc:  # pragma: no cover - runtime dependent
+                self._mark_model_failed(exc)
         return [self._hash_embed(text) for text in text_list]
 
 

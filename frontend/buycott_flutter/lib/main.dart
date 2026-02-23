@@ -50,6 +50,12 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
   Timer? _debounce;
   bool _loading = false;
   bool _localOnly = true;
+  bool _consumerFacingOnly = true;
+  bool _includeServiceAreaBusinesses = false;
+  bool _requireDelivery = false;
+  bool _requireTakeout = false;
+  bool _requireDineIn = false;
+  bool _requireCurbsidePickup = false;
   bool _openNow = false;
   bool _walkingDistance = false;
   bool _showAllBusinesses = false;
@@ -137,6 +143,12 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
               lat: _userLocation.latitude,
               lng: _userLocation.longitude,
               includeChains: !_localOnly,
+              consumerFacingOnly: _consumerFacingOnly,
+              includeServiceAreaBusinesses: _includeServiceAreaBusinesses,
+              requireDelivery: _requireDelivery,
+              requireTakeout: _requireTakeout,
+              requireDineIn: _requireDineIn,
+              requireCurbsidePickup: _requireCurbsidePickup,
               openNow: _openNow,
               walkingDistance: _walkingDistance,
             )
@@ -145,6 +157,12 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
               lat: _userLocation.latitude,
               lng: _userLocation.longitude,
               includeChains: !_localOnly,
+              consumerFacingOnly: _consumerFacingOnly,
+              includeServiceAreaBusinesses: _includeServiceAreaBusinesses,
+              requireDelivery: _requireDelivery,
+              requireTakeout: _requireTakeout,
+              requireDineIn: _requireDineIn,
+              requireCurbsidePickup: _requireCurbsidePickup,
               openNow: _openNow,
               walkingDistance: _walkingDistance,
             );
@@ -197,6 +215,135 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
         _queryController.text.trim().isNotEmpty) {
       await _performSearch();
     }
+  }
+
+  Future<void> _openAdvancedSettings() async {
+    bool consumerFacingOnly = _consumerFacingOnly;
+    bool includeServiceAreaBusinesses = _includeServiceAreaBusinesses;
+    bool openNow = _openNow;
+    bool requireDelivery = _requireDelivery;
+    bool requireTakeout = _requireTakeout;
+    bool requireDineIn = _requireDineIn;
+    bool requireCurbsidePickup = _requireCurbsidePickup;
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        final textTheme = Theme.of(context).textTheme;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: Dimensions.sheetPadding,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      'Advanced settings',
+                      style: textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: Dimensions.x2),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Consumer-facing only'),
+                      subtitle: const Text(
+                          'Default ON. Hide unknown/non-consumer business models.'),
+                      value: consumerFacingOnly,
+                      onChanged: (value) {
+                        setSheetState(() => consumerFacingOnly = value);
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Include service-area businesses'),
+                      subtitle: const Text(
+                          'When OFF, service-area-only businesses are excluded.'),
+                      value: includeServiceAreaBusinesses,
+                      onChanged: (value) {
+                        setSheetState(
+                            () => includeServiceAreaBusinesses = value);
+                      },
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Open now (Places-only)'),
+                      subtitle:
+                          const Text('Require operational.open_now == true.'),
+                      value: openNow,
+                      onChanged: (value) {
+                        setSheetState(() => openNow = value);
+                      },
+                    ),
+                    const SizedBox(height: Dimensions.x1),
+                    Text(
+                      'Fulfillment requirements',
+                      style: textTheme.bodyLarge
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Delivery'),
+                      value: requireDelivery,
+                      onChanged: (value) {
+                        setSheetState(() => requireDelivery = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Takeout'),
+                      value: requireTakeout,
+                      onChanged: (value) {
+                        setSheetState(() => requireTakeout = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Dine-in'),
+                      value: requireDineIn,
+                      onChanged: (value) {
+                        setSheetState(() => requireDineIn = value ?? false);
+                      },
+                    ),
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Curbside pickup'),
+                      value: requireCurbsidePickup,
+                      onChanged: (value) {
+                        setSheetState(
+                            () => requireCurbsidePickup = value ?? false);
+                      },
+                    ),
+                    const SizedBox(height: Dimensions.x2),
+                    PrimaryButton(
+                      label: 'Apply',
+                      icon: Icons.tune,
+                      expand: true,
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        setState(() {
+                          _consumerFacingOnly = consumerFacingOnly;
+                          _includeServiceAreaBusinesses =
+                              includeServiceAreaBusinesses;
+                          _openNow = openNow;
+                          _requireDelivery = requireDelivery;
+                          _requireTakeout = requireTakeout;
+                          _requireDineIn = requireDineIn;
+                          _requireCurbsidePickup = requireCurbsidePickup;
+                        });
+                        _performSearch();
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _openBusinessSheet(SearchResult result) async {
@@ -409,14 +556,45 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
 
                       final capabilities =
                           snapshot.data?.capabilities ?? const <Capability>[];
-                      final allOpenClawTerms = capabilities
+                      final menuItems =
+                          snapshot.data?.menuItems ?? const <String>[];
+                      final openClawCapabilities =
+                          capabilities.where((capability) {
+                        final source =
+                            (capability.sourceReference ?? '').trim();
+                        return source.startsWith('phase5:');
+                      }).toList();
+                      final fallbackCapabilities =
+                          capabilities.where((capability) {
+                        final source =
+                            (capability.sourceReference ?? '').trim();
+                        return !source.startsWith('phase5:');
+                      }).toList();
+                      final summaryCapabilities =
+                          openClawCapabilities.isNotEmpty
+                              ? openClawCapabilities
+                              : fallbackCapabilities;
+                      final openClawCapabilityTerms = openClawCapabilities
+                          .map((capability) => capability.ontologyTerm.trim())
+                          .where((term) => term.isNotEmpty)
+                          .toSet()
+                          .toList()
+                        ..sort();
+                      final openClawTerms = <String>{
+                        ...openClawCapabilityTerms,
+                        ...menuItems.map((item) => item.trim()).where(
+                              (item) => item.isNotEmpty,
+                            ),
+                      }.toList()
+                        ..sort();
+                      final fallbackTerms = fallbackCapabilities
                           .map((capability) => capability.ontologyTerm.trim())
                           .where((term) => term.isNotEmpty)
                           .toSet()
                           .toList()
                         ..sort();
 
-                      if (capabilities.isEmpty) {
+                      if (capabilities.isEmpty && menuItems.isEmpty) {
                         return Text('No inferred capabilities yet.',
                             style: textTheme.bodyMedium);
                       }
@@ -424,73 +602,145 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          Wrap(
-                            spacing: Dimensions.x1,
-                            runSpacing: Dimensions.x1,
-                            children: capabilities.take(8).map((capability) {
-                              return Chip(
-                                label: Text(capability.ontologyTerm),
-                                backgroundColor: BuycottColors.bgPrimary,
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: Dimensions.x2),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: BuycottColors.bgPrimary,
-                              borderRadius:
-                                  BorderRadius.circular(tokens.radiusMd),
-                              border: Border.all(color: BuycottColors.border),
+                          if (summaryCapabilities.isNotEmpty) ...<Widget>[
+                            Wrap(
+                              spacing: Dimensions.x1,
+                              runSpacing: Dimensions.x1,
+                              children: summaryCapabilities
+                                  .take(8)
+                                  .map((capability) {
+                                return Chip(
+                                  label: Text(capability.ontologyTerm),
+                                  backgroundColor: BuycottColors.bgPrimary,
+                                );
+                              }).toList(),
                             ),
-                            child: Theme(
-                              data: Theme.of(context).copyWith(
-                                dividerColor: BuycottColors.bgPrimary,
+                            const SizedBox(height: Dimensions.x2),
+                          ],
+                          if (openClawTerms.isNotEmpty) ...<Widget>[
+                            Container(
+                              decoration: BoxDecoration(
+                                color: BuycottColors.bgPrimary,
+                                borderRadius:
+                                    BorderRadius.circular(tokens.radiusMd),
+                                border: Border.all(color: BuycottColors.border),
                               ),
-                              child: ExpansionTile(
-                                tilePadding: const EdgeInsets.symmetric(
-                                  horizontal: Dimensions.x2,
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  dividerColor: BuycottColors.bgPrimary,
                                 ),
-                                childrenPadding: const EdgeInsets.fromLTRB(
-                                  Dimensions.x2,
-                                  0,
-                                  Dimensions.x2,
-                                  Dimensions.x2,
-                                ),
-                                iconColor: BuycottColors.accentPrimary,
-                                collapsedIconColor: BuycottColors.textSecondary,
-                                title: Text(
-                                  'OpenClaw terms',
-                                  style: textTheme.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                                subtitle: Text(
-                                  'Expand to view all ${allOpenClawTerms.length} terms',
-                                  style: textTheme.bodySmall?.copyWith(
-                                    color: BuycottColors.textSecondary,
+                                child: ExpansionTile(
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: Dimensions.x2,
                                   ),
-                                ),
-                                children: <Widget>[
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Wrap(
-                                      spacing: Dimensions.x1,
-                                      runSpacing: Dimensions.x1,
-                                      children: allOpenClawTerms.map((term) {
-                                        return Chip(
-                                          label: Text(term),
-                                          backgroundColor: BuycottColors
-                                              .accentDim
-                                              .withValues(
-                                            alpha: tokens.hoverOverlayOpacity,
-                                          ),
-                                        );
-                                      }).toList(),
+                                  childrenPadding: const EdgeInsets.fromLTRB(
+                                    Dimensions.x2,
+                                    0,
+                                    Dimensions.x2,
+                                    Dimensions.x2,
+                                  ),
+                                  iconColor: BuycottColors.accentPrimary,
+                                  collapsedIconColor:
+                                      BuycottColors.textSecondary,
+                                  title: Text(
+                                    'OpenClaw terms',
+                                    style: textTheme.bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(
+                                    'Expand to view all ${openClawTerms.length} terms '
+                                    '(${menuItems.length} menu items)',
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: BuycottColors.textSecondary,
                                     ),
                                   ),
-                                ],
+                                  children: <Widget>[
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Wrap(
+                                        spacing: Dimensions.x1,
+                                        runSpacing: Dimensions.x1,
+                                        children: openClawTerms.map((term) {
+                                          return Chip(
+                                            label: Text(term),
+                                            backgroundColor: BuycottColors
+                                                .accentDim
+                                                .withValues(
+                                              alpha: tokens.hoverOverlayOpacity,
+                                            ),
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
+                          ] else ...<Widget>[
+                            Text(
+                              'OpenClaw terms are not available for this business yet.',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: BuycottColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                          if (fallbackTerms.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: Dimensions.x1),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: BuycottColors.bgPrimary,
+                                borderRadius:
+                                    BorderRadius.circular(tokens.radiusMd),
+                                border: Border.all(color: BuycottColors.border),
+                              ),
+                              child: Theme(
+                                data: Theme.of(context).copyWith(
+                                  dividerColor: BuycottColors.bgPrimary,
+                                ),
+                                child: ExpansionTile(
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: Dimensions.x2,
+                                  ),
+                                  childrenPadding: const EdgeInsets.fromLTRB(
+                                    Dimensions.x2,
+                                    0,
+                                    Dimensions.x2,
+                                    Dimensions.x2,
+                                  ),
+                                  iconColor: BuycottColors.accentPrimary,
+                                  collapsedIconColor:
+                                      BuycottColors.textSecondary,
+                                  title: Text(
+                                    'Fallback terms',
+                                    style: textTheme.bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                  subtitle: Text(
+                                    'Semantic fallback (${fallbackTerms.length})',
+                                    style: textTheme.bodySmall?.copyWith(
+                                      color: BuycottColors.textSecondary,
+                                    ),
+                                  ),
+                                  children: <Widget>[
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Wrap(
+                                        spacing: Dimensions.x1,
+                                        runSpacing: Dimensions.x1,
+                                        children: fallbackTerms.map((term) {
+                                          return Chip(
+                                            label: Text(term),
+                                            backgroundColor:
+                                                BuycottColors.bgSurface,
+                                          );
+                                        }).toList(),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       );
                     },
@@ -919,6 +1169,17 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                                 }
                               },
                             ),
+                            const SizedBox(width: Dimensions.x1),
+                            ActionChip(
+                              label: Text(
+                                _consumerFacingOnly
+                                    ? 'Advanced (CF on)'
+                                    : 'Advanced',
+                              ),
+                              avatar:
+                                  const Icon(Icons.tune, size: Dimensions.x2),
+                              onPressed: _openAdvancedSettings,
+                            ),
                           ],
                         ),
                       ),
@@ -962,6 +1223,24 @@ class _BuycottMapPageState extends State<BuycottMapPage> {
                             alignment: Alignment.centerLeft,
                             child: Text(
                               _traceSummaryLabel()!,
+                              style: textTheme.bodySmall?.copyWith(
+                                color: BuycottColors.accentPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (_includeServiceAreaBusinesses ||
+                            _openNow ||
+                            _requireDelivery ||
+                            _requireTakeout ||
+                            _requireDineIn ||
+                            _requireCurbsidePickup ||
+                            !_consumerFacingOnly) ...<Widget>[
+                          const SizedBox(height: Dimensions.x1),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Advanced filters active',
                               style: textTheme.bodySmall?.copyWith(
                                 color: BuycottColors.accentPrimary,
                               ),
